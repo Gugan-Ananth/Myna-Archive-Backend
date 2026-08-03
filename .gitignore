@@ -1,1 +1,19 @@
+# Dependencies
 node_modules
+
+# Environment & secrets (never commit real credentials)
+.env
+.env.local
+.env.*.local
+
+# Build / Nest
+dist
+coverage
+
+# Logs & OS
+*.log
+.DS_Store
+
+# IDE
+.idea
+.vscode
