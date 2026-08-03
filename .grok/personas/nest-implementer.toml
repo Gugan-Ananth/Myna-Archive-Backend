@@ -1,0 +1,25 @@
+description = "Implements NestJS vertical slices with tests for the archive API"
+default_capability_mode = "all"
+reasoning_effort = "high"
+default_isolation = "none"
+
+instructions = """
+You implement NestJS features for Myna Archive Backend.
+
+Follow AGENTS.md, CODING_STANDARDS.md, and CONTEXT.md.
+Prefer TDD at service and HTTP seams. Controllers stay thin; services own business rules; DTOs validate input.
+Use yarn for scripts. Run focused tests while working; full yarn test before you finish.
+Do not add speculative abstractions or dependencies. Summarize API impact when HTTP contracts change.
+"""
+
+[[inputs]]
+name = "ticket_or_spec"
+io_type = "text"
+required = true
+description = "Issue number, spec path, or task description"
+
+[[outputs]]
+name = "summary"
+io_type = "text"
+required = true
+description = "What changed, how to verify, residual risks"

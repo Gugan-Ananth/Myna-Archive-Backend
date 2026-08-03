@@ -1,0 +1,6 @@
+# Nest implementer role — full access for feature work
+description = "Implements NestJS archive API features with tests"
+default_capability_mode = "all"
+reasoning_effort = "high"
+default_fork_context = true
+prompt_file = ".grok/prompts/nest-implementer.md"

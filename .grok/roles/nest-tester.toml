@@ -1,0 +1,6 @@
+# Nest tester role — write and run tests
+description = "Authors NestJS unit/e2e tests and runs Jest"
+default_capability_mode = "all"
+reasoning_effort = "high"
+default_fork_context = true
+prompt_file = ".grok/prompts/nest-tester.md"

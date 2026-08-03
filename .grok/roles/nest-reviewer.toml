@@ -1,0 +1,6 @@
+# Nest reviewer role — read-only review
+description = "Reviews NestJS diffs against standards and spec"
+default_capability_mode = "read-only"
+reasoning_effort = "high"
+default_fork_context = true
+prompt_file = ".grok/prompts/nest-reviewer.md"
