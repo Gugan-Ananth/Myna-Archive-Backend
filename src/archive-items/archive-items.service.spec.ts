@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { CloudinaryService } from '../media/cloudinary.service';
+import { BunnyService } from '../media/bunny.service';
 import { ArchiveItemsService } from './archive-items.service';
 import { ArchiveItemEntity } from './entities/archive-item.entity';
 
@@ -21,7 +21,7 @@ describe('ArchiveItemsService', () => {
     createQueryBuilder: jest.fn(),
   };
 
-  const cloudinary = {
+  const bunny = {
     verifyAndDeriveUrls: jest.fn(),
     destroy: jest.fn(async () => undefined),
   };
@@ -33,7 +33,7 @@ describe('ArchiveItemsService', () => {
       providers: [
         ArchiveItemsService,
         { provide: getRepositoryToken(ArchiveItemEntity), useValue: repository },
-        { provide: CloudinaryService, useValue: cloudinary },
+        { provide: BunnyService, useValue: bunny },
       ],
     }).compile();
 
@@ -41,23 +41,23 @@ describe('ArchiveItemsService', () => {
   });
 
   describe('create', () => {
-    it('creates an archive item after Cloudinary verify', async () => {
-      cloudinary.verifyAndDeriveUrls.mockResolvedValue({
+    it('creates an archive item after Bunny verify', async () => {
+      bunny.verifyAndDeriveUrls.mockResolvedValue({
         resource: {
-          publicId: 'myna-archive/abc',
+          publicId: 'myna-archive/abc.jpg',
           resourceType: 'image',
           bytes: 1000,
           format: 'jpg',
         },
         urls: {
-          mediaUrl: 'https://res.cloudinary.com/demo/image/upload/q_auto/abc',
+          mediaUrl: 'https://cdn.example.b-cdn.net/myna-archive/abc.jpg',
           thumbnailUrl:
-            'https://res.cloudinary.com/demo/image/upload/w_480/abc',
+            'https://cdn.example.b-cdn.net/myna-archive/abc.jpg?width=480&height=270',
         },
       });
 
       const result = await service.create({
-        publicId: 'myna-archive/abc',
+        publicId: 'myna-archive/abc.jpg',
         resourceType: 'image',
         mediaType: 'image',
         name: 'Misty Lake',
@@ -66,17 +66,17 @@ describe('ArchiveItemsService', () => {
         description: 'Morning fog',
       });
 
-      expect(cloudinary.verifyAndDeriveUrls).toHaveBeenCalled();
+      expect(bunny.verifyAndDeriveUrls).toHaveBeenCalled();
       expect(result.name).toBe('Misty Lake');
       expect(result.tags).toEqual(['landscape', 'fog']);
       expect(result.mediaType).toBe('image');
-      expect(result.mediaUrl).toContain('cloudinary');
+      expect(result.mediaUrl).toContain('b-cdn.net');
     });
 
     it('rejects when tags normalize to empty', async () => {
       await expect(
         service.create({
-          publicId: 'myna-archive/abc',
+          publicId: 'myna-archive/abc.jpg',
           resourceType: 'image',
           mediaType: 'image',
           name: 'x',
@@ -97,10 +97,10 @@ describe('ArchiveItemsService', () => {
   });
 
   describe('remove', () => {
-    it('destroys Cloudinary asset then deletes row', async () => {
+    it('destroys Bunny asset then deletes row', async () => {
       repository.findOne.mockResolvedValue({
         id: '11111111-1111-1111-1111-111111111111',
-        publicId: 'myna-archive/abc',
+        publicId: 'myna-archive/abc.jpg',
         resourceType: 'image',
         name: 'x',
         description: '',
@@ -113,8 +113,8 @@ describe('ArchiveItemsService', () => {
 
       await service.remove('11111111-1111-1111-1111-111111111111');
 
-      expect(cloudinary.destroy).toHaveBeenCalledWith(
-        'myna-archive/abc',
+      expect(bunny.destroy).toHaveBeenCalledWith(
+        'myna-archive/abc.jpg',
         'image',
       );
       expect(repository.remove).toHaveBeenCalled();

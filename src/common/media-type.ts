@@ -1,6 +1,8 @@
 export type MediaType = 'image' | 'video';
 
-export type CloudinaryResourceType = 'image' | 'video';
+/** Provider-agnostic resource kind stored on Archive Item (`resourceType`). */
+export type MediaResourceType = 'image' | 'video';
+
 
 export const IMAGE_MIME_TYPES = [
   'image/jpeg',

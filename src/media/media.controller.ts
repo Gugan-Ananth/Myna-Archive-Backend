@@ -1,5 +1,5 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
-import { CloudinaryService } from './cloudinary.service';
+import { BunnyService } from './bunny.service';
 import {
   UploadSignatureDto,
   type UploadSignatureResponse,
@@ -7,13 +7,13 @@ import {
 
 @Controller('media')
 export class MediaController {
-  constructor(private readonly cloudinary: CloudinaryService) {}
+  constructor(private readonly bunny: BunnyService) {}
 
   @Post('upload-signature')
   @HttpCode(HttpStatus.OK)
   createUploadSignature(
     @Body() dto: UploadSignatureDto,
-  ): UploadSignatureResponse {
-    return this.cloudinary.createUploadSignature(dto);
+  ): Promise<UploadSignatureResponse> {
+    return this.bunny.createUploadSignature(dto);
   }
 }

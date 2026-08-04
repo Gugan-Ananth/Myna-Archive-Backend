@@ -11,9 +11,12 @@ export function validateEnv(
     'DB_USERNAME',
     'DB_PASSWORD',
     'DB_DATABASE',
-    'CLOUDINARY_CLOUD_NAME',
-    'CLOUDINARY_API_KEY',
-    'CLOUDINARY_API_SECRET',
+    'BUNNY_STORAGE_ZONE_NAME',
+    'BUNNY_STORAGE_PASSWORD',
+    'BUNNY_CDN_HOSTNAME',
+    'BUNNY_STREAM_LIBRARY_ID',
+    'BUNNY_STREAM_API_KEY',
+    'BUNNY_STREAM_CDN_HOSTNAME',
   ] as const;
 
   const missing = required.filter((key) => {

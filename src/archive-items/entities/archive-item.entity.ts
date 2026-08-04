@@ -34,11 +34,15 @@ export class ArchiveItemEntity {
   @Column({ type: 'text' })
   mediaUrl!: string;
 
-  /** Cloudinary public_id for destroy / re-derive URLs. */
+  /**
+   * Provider asset id for destroy / re-derive URLs.
+   * Image: Bunny Storage path (e.g. myna-archive/uuid.jpg).
+   * Video: Bunny Stream video GUID.
+   */
   @Column({ type: 'varchar', length: 512 })
   publicId!: string;
 
-  /** Cloudinary resource_type (image | video). */
+  /** Media resource kind (image | video). */
   @Column({ type: 'varchar', length: 16 })
   resourceType!: string;
 

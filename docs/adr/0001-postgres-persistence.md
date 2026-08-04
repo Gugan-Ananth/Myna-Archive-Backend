@@ -15,7 +15,7 @@ The personal archive must persist Archive Item metadata (name, description, tags
 - Use **PostgreSQL** as the primary database.
 - Use **TypeORM** via `@nestjs/typeorm` for entities, repositories, and migrations (Nest-first-party path; reversible if pain appears).
 - Store tags as a Postgres `text[]` column on the archive item row (no separate tags table in v1).
-- Store **`mediaType`** (`image` | `video`) plus only **URLs** (and optional Cloudinary `public_id` / resource type) for media — never binary blobs in Postgres.
+- Store **`mediaType`** (`image` | `video`) plus only **URLs** (and optional provider `publicId` / resource type) for media — never binary blobs in Postgres.
 - Use UUID string `id` values aligned with the frontend `ArchiveItem.id: string` contract.
 - Public media field is **`mediaUrl`** (not `imageUrl`); see ADR 0006.
 

@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { normalizeTags } from '../common/normalize-tags';
-import { CloudinaryService } from '../media/cloudinary.service';
+import { BunnyService } from '../media/bunny.service';
 import {
   toArchiveItemResponse,
   type ArchiveItemResponse,
@@ -25,7 +25,7 @@ export class ArchiveItemsService {
   constructor(
     @InjectRepository(ArchiveItemEntity)
     private readonly archiveItems: Repository<ArchiveItemEntity>,
-    private readonly cloudinary: CloudinaryService,
+    private readonly bunny: BunnyService,
   ) {}
 
   async create(dto: CreateArchiveItemDto): Promise<ArchiveItemResponse> {
@@ -36,7 +36,7 @@ export class ArchiveItemsService {
       );
     }
 
-    const { urls } = await this.cloudinary.verifyAndDeriveUrls({
+    const { urls } = await this.bunny.verifyAndDeriveUrls({
       publicId: dto.publicId,
       resourceType: dto.resourceType,
       mediaType: dto.mediaType,
@@ -148,7 +148,7 @@ export class ArchiveItemsService {
     const resourceType =
       entity.resourceType === 'video' ? 'video' : 'image';
 
-    await this.cloudinary.destroy(entity.publicId, resourceType);
+    await this.bunny.destroy(entity.publicId, resourceType);
     await this.archiveItems.remove(entity);
     this.logger.log(`Deleted archive item ${id}`);
   }

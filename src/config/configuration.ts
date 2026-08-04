@@ -15,18 +15,33 @@ export default () => ({
     synchronize: process.env.DB_SYNC === 'true',
     logging: process.env.DB_LOGGING === 'true',
   },
-  cloudinary: {
-    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
-    apiKey: process.env.CLOUDINARY_API_KEY,
-    apiSecret: process.env.CLOUDINARY_API_SECRET,
-    folder: process.env.CLOUDINARY_FOLDER ?? 'myna-archive',
-    thumbTransform:
-      process.env.CLOUDINARY_THUMB_TRANSFORM ??
-      'c_fill,w_480,h_270,q_auto:eco',
-    imageTransform: process.env.CLOUDINARY_IMAGE_TRANSFORM ?? 'q_auto:best',
-    videoPosterTransform:
-      process.env.CLOUDINARY_VIDEO_POSTER_TRANSFORM ??
-      'so_0,w_480,h_270,c_fill,q_auto:eco',
+  bunny: {
+    storage: {
+      zoneName: process.env.BUNNY_STORAGE_ZONE_NAME,
+      password: process.env.BUNNY_STORAGE_PASSWORD,
+      /** e.g. storage.bunnycdn.com or ny.storage.bunnycdn.com */
+      hostname: process.env.BUNNY_STORAGE_HOSTNAME ?? 'storage.bunnycdn.com',
+      folder: process.env.BUNNY_STORAGE_FOLDER ?? 'myna-archive',
+    },
+    cdn: {
+      /** Pull Zone hostname for image delivery, e.g. myzone.b-cdn.net */
+      hostname: process.env.BUNNY_CDN_HOSTNAME,
+      /** Bunny Optimizer query string for grid thumbnails */
+      imageThumbQuery:
+        process.env.BUNNY_IMAGE_THUMB_QUERY ??
+        'width=480&height=270&aspect_ratio=16:9&quality=80',
+    },
+    stream: {
+      libraryId: process.env.BUNNY_STREAM_LIBRARY_ID,
+      apiKey: process.env.BUNNY_STREAM_API_KEY,
+      /** Stream CDN hostname from library settings, e.g. vz-xxxxx.b-cdn.net */
+      cdnHostname: process.env.BUNNY_STREAM_CDN_HOSTNAME,
+      defaultResolution: process.env.BUNNY_STREAM_DEFAULT_RESOLUTION ?? '720',
+      uploadExpireSeconds: parseInt(
+        process.env.BUNNY_STREAM_UPLOAD_EXPIRE_SECONDS ?? '86400',
+        10,
+      ),
+    },
   },
   upload: {
     maxImageBytes: parseInt(process.env.MAX_IMAGE_BYTES ?? '52428800', 10),

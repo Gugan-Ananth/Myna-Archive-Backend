@@ -1,29 +1,29 @@
 import { Controller, Get } from '@nestjs/common';
-import { CloudinaryService } from '../media/cloudinary.service';
+import { BunnyService } from '../media/bunny.service';
 import { DatabaseHealthService } from '../database/database-health.service';
 
 @Controller('health')
 export class HealthController {
   constructor(
     private readonly databaseHealth: DatabaseHealthService,
-    private readonly cloudinary: CloudinaryService,
+    private readonly bunny: BunnyService,
   ) {}
 
   @Get()
   async check(): Promise<{
     status: 'ok' | 'degraded';
     postgres: boolean;
-    cloudinary: boolean;
+    bunny: boolean;
   }> {
-    const [postgres, cloudinaryOk] = await Promise.all([
+    const [postgres, bunnyOk] = await Promise.all([
       this.databaseHealth.isHealthy(),
-      this.cloudinary.ping(),
+      this.bunny.ping(),
     ]);
 
     return {
-      status: postgres && cloudinaryOk ? 'ok' : 'degraded',
+      status: postgres && bunnyOk ? 'ok' : 'degraded',
       postgres,
-      cloudinary: cloudinaryOk,
+      bunny: bunnyOk,
     };
   }
 }
