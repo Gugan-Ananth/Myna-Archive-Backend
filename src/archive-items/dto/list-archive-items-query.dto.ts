@@ -1,4 +1,4 @@
-import { Transform, Type } from 'class-transformer';
+import { Transform, Type } from "class-transformer";
 import {
   IsArray,
   IsIn,
@@ -7,16 +7,25 @@ import {
   IsString,
   Max,
   Min,
-} from 'class-validator';
+} from "class-validator";
+
+function toScalarString(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return "";
+}
 
 function toStringArray(value: unknown): string[] | undefined {
-  if (value === undefined || value === null || value === '') {
+  if (value === undefined || value === null || value === "") {
     return undefined;
   }
   if (Array.isArray(value)) {
-    return value.map(String);
+    return value.map(toScalarString).filter((s) => s.length > 0);
   }
-  return [String(value)];
+  const single = toScalarString(value);
+  return single.length > 0 ? [single] : undefined;
 }
 
 export class ListArchiveItemsQueryDto {
@@ -32,8 +41,8 @@ export class ListArchiveItemsQueryDto {
   tag?: string[];
 
   @IsOptional()
-  @IsIn(['image', 'video'])
-  mediaType?: 'image' | 'video';
+  @IsIn(["image", "video"])
+  mediaType?: "image" | "video";
 
   @IsOptional()
   @Type(() => Number)

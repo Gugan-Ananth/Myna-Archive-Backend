@@ -1,6 +1,6 @@
-import { Module } from '@nestjs/common';
-import { BunnyService } from './bunny.service';
-import { MediaController } from './media.controller';
+import { Module } from "@nestjs/common";
+import { BunnyService } from "./bunny.service";
+import { MediaController } from "./media.controller";
 
 @Module({
   controllers: [MediaController],

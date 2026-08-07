@@ -4,22 +4,22 @@ import {
   Logger,
   NotFoundException,
   OnApplicationBootstrap,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { createHash, randomUUID } from 'crypto';
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { createHash, randomUUID } from "crypto";
 import {
   formatAllowedForMediaType,
   type MediaType,
   mimeMatchesMediaType,
-} from '../common/media-type';
+} from "../common/media-type";
 import type {
   UploadSignatureDto,
   UploadSignatureResponse,
-} from './dto/upload-signature.dto';
+} from "./dto/upload-signature.dto";
 
 export type BunnyResourceInfo = {
   publicId: string;
-  resourceType: 'image' | 'video';
+  resourceType: "image" | "video";
   bytes: number;
   format?: string;
   width?: number;
@@ -89,10 +89,10 @@ export class BunnyService implements OnApplicationBootstrap {
   async onApplicationBootstrap(): Promise<void> {
     const ok = await this.ping();
     if (ok) {
-      this.logger.log('Bunny.net APIs accessible');
+      this.logger.log("Bunny.net APIs accessible");
     } else {
       this.logger.warn(
-        'Bunny.net not fully reachable — check storage/stream credentials and network',
+        "Bunny.net not fully reachable — check storage/stream credentials and network",
       );
     }
   }
@@ -106,7 +106,7 @@ export class BunnyService implements OnApplicationBootstrap {
   }
 
   getFolder(): string {
-    return this.config.get<string>('bunny.storage.folder') ?? 'myna-archive';
+    return this.config.get<string>("bunny.storage.folder") ?? "myna-archive";
   }
 
   async createUploadSignature(
@@ -121,9 +121,9 @@ export class BunnyService implements OnApplicationBootstrap {
     }
 
     const maxBytes =
-      mediaType === 'image'
-        ? this.config.getOrThrow<number>('upload.maxImageBytes')
-        : this.config.getOrThrow<number>('upload.maxVideoBytes');
+      mediaType === "image"
+        ? this.config.getOrThrow<number>("upload.maxImageBytes")
+        : this.config.getOrThrow<number>("upload.maxVideoBytes");
 
     if (byteSize > maxBytes) {
       throw new BadRequestException(
@@ -131,9 +131,9 @@ export class BunnyService implements OnApplicationBootstrap {
       );
     }
 
-    const chunkSize = this.config.getOrThrow<number>('upload.chunkBytes');
+    const chunkSize = this.config.getOrThrow<number>("upload.chunkBytes");
 
-    if (mediaType === 'image') {
+    if (mediaType === "image") {
       return this.createImageUploadSignature({
         mimeType,
         maxBytes,
@@ -155,7 +155,7 @@ export class BunnyService implements OnApplicationBootstrap {
    */
   async verifyAndDeriveUrls(params: {
     publicId: string;
-    resourceType: 'image' | 'video';
+    resourceType: "image" | "video";
     mediaType: MediaType;
   }): Promise<{ resource: BunnyResourceInfo; urls: DerivedMediaUrls }> {
     const { publicId, resourceType, mediaType } = params;
@@ -167,14 +167,14 @@ export class BunnyService implements OnApplicationBootstrap {
     }
 
     let resource =
-      mediaType === 'image'
+      mediaType === "image"
         ? await this.getImageResource(publicId)
         : await this.getVideoResource(publicId);
 
     const maxBytes =
-      mediaType === 'image'
-        ? this.config.getOrThrow<number>('upload.maxImageBytes')
-        : this.config.getOrThrow<number>('upload.maxVideoBytes');
+      mediaType === "image"
+        ? this.config.getOrThrow<number>("upload.maxImageBytes")
+        : this.config.getOrThrow<number>("upload.maxVideoBytes");
 
     if (resource.bytes > maxBytes) {
       throw new BadRequestException(
@@ -183,18 +183,21 @@ export class BunnyService implements OnApplicationBootstrap {
     }
 
     if (
-      mediaType === 'image' &&
+      mediaType === "image" &&
       !formatAllowedForMediaType(resource.format, mediaType)
     ) {
       throw new BadRequestException(
-        `Format "${resource.format ?? 'unknown'}" is not allowed for ${mediaType}`,
+        `Format "${resource.format ?? "unknown"}" is not allowed for ${mediaType}`,
       );
     }
 
-    if (mediaType === 'video') {
+    if (mediaType === "video") {
       // Right after TUS, status can still be "created" briefly — retry a few times.
       let videoResource = resource;
-      if ((videoResource.status ?? STREAM_STATUS.created) === STREAM_STATUS.created) {
+      if (
+        (videoResource.status ?? STREAM_STATUS.created) ===
+        STREAM_STATUS.created
+      ) {
         for (let attempt = 0; attempt < 5; attempt += 1) {
           await new Promise((r) => setTimeout(r, 800));
           videoResource = await this.getVideoResource(publicId);
@@ -209,11 +212,13 @@ export class BunnyService implements OnApplicationBootstrap {
 
       const status = videoResource.status ?? STREAM_STATUS.created;
 
-      if (status === STREAM_STATUS.error || status === STREAM_STATUS.uploadFailed) {
-        const detail =
-          videoResource.transcodingMessages?.length
-            ? videoResource.transcodingMessages.join(' · ')
-            : `Bunny Stream status=${status}`;
+      if (
+        status === STREAM_STATUS.error ||
+        status === STREAM_STATUS.uploadFailed
+      ) {
+        const detail = videoResource.transcodingMessages?.length
+          ? videoResource.transcodingMessages.join(" · ")
+          : `Bunny Stream status=${status}`;
         throw new BadRequestException(
           `Video transcoding failed on Bunny Stream (${detail}). Try a standard H.264/AAC MP4, or re-export the file and upload again.`,
         );
@@ -238,13 +243,13 @@ export class BunnyService implements OnApplicationBootstrap {
     mediaType: MediaType,
     resource?: BunnyResourceInfo,
   ): DerivedMediaUrls {
-    if (mediaType === 'image') {
-      const cdn = this.config.getOrThrow<string>('bunny.cdn.hostname');
-      const path = publicId.replace(/^\/+/, '');
+    if (mediaType === "image") {
+      const cdn = this.config.getOrThrow<string>("bunny.cdn.hostname");
+      const path = publicId.replace(/^\/+/, "");
       const base = `https://${cdn}/${path}`;
       const thumbQuery =
-        this.config.get<string>('bunny.cdn.imageThumbQuery') ??
-        'width=480&height=270&aspect_ratio=16:9&quality=80';
+        this.config.get<string>("bunny.cdn.imageThumbQuery") ??
+        "width=480&height=270&aspect_ratio=16:9&quality=80";
 
       return {
         mediaUrl: base,
@@ -253,7 +258,7 @@ export class BunnyService implements OnApplicationBootstrap {
     }
 
     const streamCdn = this.config.getOrThrow<string>(
-      'bunny.stream.cdnHostname',
+      "bunny.stream.cdnHostname",
     );
     const videoId = publicId;
     const resolution = this.pickProgressiveResolution(resource);
@@ -265,11 +270,14 @@ export class BunnyService implements OnApplicationBootstrap {
 
   async destroy(
     publicId: string,
-    resourceType: 'image' | 'video',
+    resourceType: "image" | "video",
   ): Promise<void> {
     try {
-      if (resourceType === 'image') {
+      if (resourceType === "image") {
         await this.destroyImage(publicId);
+        // Storage DELETE does not drop edge/Optimizer cache — purge so
+        // deleted media cannot keep serving from CDN.
+        await this.purgeImageCdnCache(publicId);
       } else {
         await this.destroyVideo(publicId);
       }
@@ -292,29 +300,29 @@ export class BunnyService implements OnApplicationBootstrap {
     chunkSize: number;
     fileName?: string;
   }): UploadSignatureResponse {
-    const folder = this.getFolder().replace(/^\/+|\/+$/g, '');
+    const folder = this.getFolder().replace(/^\/+|\/+$/g, "");
     const ext = this.extensionFromMime(params.mimeType);
     const assetId = randomUUID();
     const publicId = `${folder}/${assetId}${ext}`;
 
-    const zone = this.config.getOrThrow<string>('bunny.storage.zoneName');
-    const hostname = this.config.getOrThrow<string>('bunny.storage.hostname');
-    const accessKey = this.config.getOrThrow<string>('bunny.storage.password');
+    const zone = this.config.getOrThrow<string>("bunny.storage.zoneName");
+    const hostname = this.config.getOrThrow<string>("bunny.storage.hostname");
+    const accessKey = this.config.getOrThrow<string>("bunny.storage.password");
     const uploadUrl = `https://${hostname}/${zone}/${publicId}`;
 
     // Single-user v1 (ADR 0003): storage AccessKey is returned for direct browser PUT.
     // Bunny Edge Storage has no time-limited signed upload equivalent to Cloudinary.
     return {
-      provider: 'bunny',
-      mediaType: 'image',
-      resourceType: 'image',
+      provider: "bunny",
+      mediaType: "image",
+      resourceType: "image",
       publicId,
-      uploadMethod: 'PUT',
+      uploadMethod: "PUT",
       uploadUrl,
       accessKey,
       headers: {
         AccessKey: accessKey,
-        'Content-Type': 'application/octet-stream',
+        "Content-Type": "application/octet-stream",
       },
       chunkSize: params.chunkSize,
       maxBytes: params.maxBytes,
@@ -322,19 +330,19 @@ export class BunnyService implements OnApplicationBootstrap {
   }
 
   private async getImageResource(publicId: string): Promise<BunnyResourceInfo> {
-    const zone = this.config.getOrThrow<string>('bunny.storage.zoneName');
-    const hostname = this.config.getOrThrow<string>('bunny.storage.hostname');
-    const accessKey = this.config.getOrThrow<string>('bunny.storage.password');
-    const path = publicId.replace(/^\/+/, '');
+    const zone = this.config.getOrThrow<string>("bunny.storage.zoneName");
+    const hostname = this.config.getOrThrow<string>("bunny.storage.hostname");
+    const accessKey = this.config.getOrThrow<string>("bunny.storage.password");
+    const path = publicId.replace(/^\/+/, "");
     const url = `https://${hostname}/${zone}/${path}`;
 
     try {
       // Range request avoids downloading the full object while still verifying existence/size.
       const response = await fetch(url, {
-        method: 'GET',
+        method: "GET",
         headers: {
           AccessKey: accessKey,
-          Range: 'bytes=0-0',
+          Range: "bytes=0-0",
         },
       });
 
@@ -349,13 +357,13 @@ export class BunnyService implements OnApplicationBootstrap {
         return this.getImageResourceViaList(publicId);
       }
 
-      const contentRange = response.headers.get('content-range');
-      const contentLengthHeader = response.headers.get('content-length');
+      const contentRange = response.headers.get("content-range");
+      const contentLengthHeader = response.headers.get("content-length");
       let bytes = 0;
 
       if (contentRange) {
         // e.g. "bytes 0-0/12345"
-        const total = contentRange.split('/')[1];
+        const total = contentRange.split("/")[1];
         bytes = total ? Number(total) : 0;
       } else if (contentLengthHeader) {
         bytes = Number(contentLengthHeader);
@@ -370,7 +378,7 @@ export class BunnyService implements OnApplicationBootstrap {
 
       return {
         publicId,
-        resourceType: 'image',
+        resourceType: "image",
         bytes,
         format: this.formatFromPath(publicId),
       };
@@ -392,20 +400,20 @@ export class BunnyService implements OnApplicationBootstrap {
   private async getImageResourceViaList(
     publicId: string,
   ): Promise<BunnyResourceInfo> {
-    const zone = this.config.getOrThrow<string>('bunny.storage.zoneName');
-    const hostname = this.config.getOrThrow<string>('bunny.storage.hostname');
-    const accessKey = this.config.getOrThrow<string>('bunny.storage.password');
-    const path = publicId.replace(/^\/+/, '');
-    const slash = path.lastIndexOf('/');
-    const dir = slash >= 0 ? path.slice(0, slash + 1) : '';
+    const zone = this.config.getOrThrow<string>("bunny.storage.zoneName");
+    const hostname = this.config.getOrThrow<string>("bunny.storage.hostname");
+    const accessKey = this.config.getOrThrow<string>("bunny.storage.password");
+    const path = publicId.replace(/^\/+/, "");
+    const slash = path.lastIndexOf("/");
+    const dir = slash >= 0 ? path.slice(0, slash + 1) : "";
     const fileName = slash >= 0 ? path.slice(slash + 1) : path;
     const listUrl = `https://${hostname}/${zone}/${dir}`;
 
     const response = await fetch(listUrl, {
-      method: 'GET',
+      method: "GET",
       headers: {
         AccessKey: accessKey,
-        Accept: 'application/json',
+        Accept: "application/json",
       },
     });
 
@@ -436,43 +444,91 @@ export class BunnyService implements OnApplicationBootstrap {
 
     return {
       publicId,
-      resourceType: 'image',
+      resourceType: "image",
       bytes: Number(match.Length ?? 0),
       format: this.formatFromPath(publicId),
     };
   }
 
   private async destroyImage(publicId: string): Promise<void> {
-    const zone = this.config.getOrThrow<string>('bunny.storage.zoneName');
-    const hostname = this.config.getOrThrow<string>('bunny.storage.hostname');
-    const accessKey = this.config.getOrThrow<string>('bunny.storage.password');
-    const path = publicId.replace(/^\/+/, '');
+    const zone = this.config.getOrThrow<string>("bunny.storage.zoneName");
+    const hostname = this.config.getOrThrow<string>("bunny.storage.hostname");
+    const accessKey = this.config.getOrThrow<string>("bunny.storage.password");
+    const path = publicId.replace(/^\/+/, "");
     const url = `https://${hostname}/${zone}/${path}`;
 
     const response = await fetch(url, {
-      method: 'DELETE',
+      method: "DELETE",
       headers: { AccessKey: accessKey },
     });
 
     if (!response.ok && response.status !== 404) {
-      const body = await response.text().catch(() => '');
+      const body = await response.text().catch(() => "");
       throw new Error(`HTTP ${response.status}: ${body}`);
+    }
+  }
+
+  /**
+   * Purge Pull Zone edge cache (and Optimizer variants via URL wildcard)
+   * for a deleted Storage object. Requires BUNNY_API_KEY (account API key).
+   * No-ops when the key is unset so local/dev without account access still works.
+   *
+   * @see https://docs.bunny.net/reference/purgepublic_indexpost
+   */
+  private async purgeImageCdnCache(publicId: string): Promise<void> {
+    const apiKey = this.config.get<string>("bunny.cdn.apiKey");
+    if (!apiKey?.trim()) {
+      this.logger.debug(
+        "Skipping Bunny CDN purge (BUNNY_API_KEY not set) for " + publicId,
+      );
+      return;
+    }
+
+    const cdn = this.config.getOrThrow<string>("bunny.cdn.hostname");
+    const path = publicId.replace(/^\/+/, "");
+    // Trailing * clears Optimizer query variants of the same object.
+    const purgeUrl = `https://${cdn}/${path}*`;
+
+    try {
+      const endpoint = new URL("https://api.bunny.net/purge");
+      endpoint.searchParams.set("url", purgeUrl);
+      endpoint.searchParams.set("async", "true");
+
+      const response = await fetch(endpoint.toString(), {
+        method: "POST",
+        headers: { AccessKey: apiKey },
+      });
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        this.logger.warn(
+          `Bunny CDN purge failed for ${purgeUrl}: HTTP ${response.status} ${body}`,
+        );
+        return;
+      }
+
+      this.logger.log(`Purged Bunny CDN cache for ${purgeUrl}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Bunny CDN purge error for ${publicId}: ${message}`);
     }
   }
 
   private async pingStorage(): Promise<boolean> {
     try {
-      const zone = this.config.getOrThrow<string>('bunny.storage.zoneName');
-      const hostname = this.config.getOrThrow<string>('bunny.storage.hostname');
-      const accessKey = this.config.getOrThrow<string>('bunny.storage.password');
-      const folder = this.getFolder().replace(/^\/+|\/+$/g, '');
+      const zone = this.config.getOrThrow<string>("bunny.storage.zoneName");
+      const hostname = this.config.getOrThrow<string>("bunny.storage.hostname");
+      const accessKey = this.config.getOrThrow<string>(
+        "bunny.storage.password",
+      );
+      const folder = this.getFolder().replace(/^\/+|\/+$/g, "");
       // List folder (or zone root) — cheap existence check for credentials.
       const url = `https://${hostname}/${zone}/${folder}/`;
       const response = await fetch(url, {
-        method: 'GET',
+        method: "GET",
         headers: {
           AccessKey: accessKey,
-          Accept: 'application/json',
+          Accept: "application/json",
         },
       });
       // 200 list or 404 empty folder both prove auth works on many setups.
@@ -494,19 +550,18 @@ export class BunnyService implements OnApplicationBootstrap {
     chunkSize: number;
     fileName?: string;
   }): Promise<UploadSignatureResponse> {
-    const libraryId = this.config.getOrThrow<string>('bunny.stream.libraryId');
-    const apiKey = this.config.getOrThrow<string>('bunny.stream.apiKey');
+    const libraryId = this.config.getOrThrow<string>("bunny.stream.libraryId");
+    const apiKey = this.config.getOrThrow<string>("bunny.stream.apiKey");
     const title =
-      params.fileName?.trim() ||
-      `myna-archive-${randomUUID().slice(0, 8)}`;
+      params.fileName?.trim() || `myna-archive-${randomUUID().slice(0, 8)}`;
 
     const createResponse = await fetch(
       `https://video.bunnycdn.com/library/${libraryId}/videos`,
       {
-        method: 'POST',
+        method: "POST",
         headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
+          Accept: "application/json",
+          "Content-Type": "application/json",
           AccessKey: apiKey,
         },
         body: JSON.stringify({ title }),
@@ -514,12 +569,12 @@ export class BunnyService implements OnApplicationBootstrap {
     );
 
     if (!createResponse.ok) {
-      const body = await createResponse.text().catch(() => '');
+      const body = await createResponse.text().catch(() => "");
       this.logger.warn(
         `Bunny Stream create video failed: HTTP ${createResponse.status} ${body}`,
       );
       throw new BadRequestException(
-        'Unable to create Bunny Stream video object for upload',
+        "Unable to create Bunny Stream video object for upload",
       );
     }
 
@@ -527,29 +582,29 @@ export class BunnyService implements OnApplicationBootstrap {
     const videoId = video.guid;
     if (!videoId) {
       throw new BadRequestException(
-        'Bunny Stream create video response missing guid',
+        "Bunny Stream create video response missing guid",
       );
     }
 
     // Allow long uploads (1 GB) — default 24h, overridable via env.
     const expireSeconds = this.config.get<number>(
-      'bunny.stream.uploadExpireSeconds',
+      "bunny.stream.uploadExpireSeconds",
     );
     const expirationTime =
       Math.floor(Date.now() / 1000) +
       (expireSeconds && expireSeconds > 0 ? expireSeconds : 86_400);
 
-    const signature = createHash('sha256')
+    const signature = createHash("sha256")
       .update(`${libraryId}${apiKey}${expirationTime}${videoId}`)
-      .digest('hex');
+      .digest("hex");
 
     return {
-      provider: 'bunny',
-      mediaType: 'video',
-      resourceType: 'video',
+      provider: "bunny",
+      mediaType: "video",
+      resourceType: "video",
       publicId: videoId,
-      uploadMethod: 'TUS',
-      tusEndpoint: 'https://video.bunnycdn.com/tusupload',
+      uploadMethod: "TUS",
+      tusEndpoint: "https://video.bunnycdn.com/tusupload",
       libraryId,
       videoId,
       expirationTime,
@@ -560,15 +615,15 @@ export class BunnyService implements OnApplicationBootstrap {
   }
 
   private async getVideoResource(publicId: string): Promise<BunnyResourceInfo> {
-    const libraryId = this.config.getOrThrow<string>('bunny.stream.libraryId');
-    const apiKey = this.config.getOrThrow<string>('bunny.stream.apiKey');
+    const libraryId = this.config.getOrThrow<string>("bunny.stream.libraryId");
+    const apiKey = this.config.getOrThrow<string>("bunny.stream.apiKey");
     const url = `https://video.bunnycdn.com/library/${libraryId}/videos/${publicId}`;
 
     try {
       const response = await fetch(url, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          Accept: 'application/json',
+          Accept: "application/json",
           AccessKey: apiKey,
         },
       });
@@ -580,7 +635,7 @@ export class BunnyService implements OnApplicationBootstrap {
       }
 
       if (!response.ok) {
-        const body = await response.text().catch(() => '');
+        const body = await response.text().catch(() => "");
         this.logger.warn(
           `Bunny Stream get video failed: HTTP ${response.status} ${body}`,
         );
@@ -599,15 +654,15 @@ export class BunnyService implements OnApplicationBootstrap {
 
       return {
         publicId: video.guid ?? publicId,
-        resourceType: 'video',
+        resourceType: "video",
         bytes: Number(video.storageSize ?? 0),
-        format: 'mp4',
-        width: typeof video.width === 'number' ? video.width : undefined,
-        height: typeof video.height === 'number' ? video.height : undefined,
-        duration: typeof video.length === 'number' ? video.length : undefined,
-        status: typeof video.status === 'number' ? video.status : undefined,
+        format: "mp4",
+        width: typeof video.width === "number" ? video.width : undefined,
+        height: typeof video.height === "number" ? video.height : undefined,
+        duration: typeof video.length === "number" ? video.length : undefined,
+        status: typeof video.status === "number" ? video.status : undefined,
         availableResolutions:
-          typeof video.availableResolutions === 'string'
+          typeof video.availableResolutions === "string"
             ? video.availableResolutions
             : undefined,
         transcodingMessages,
@@ -629,34 +684,36 @@ export class BunnyService implements OnApplicationBootstrap {
   }
 
   private async destroyVideo(publicId: string): Promise<void> {
-    const libraryId = this.config.getOrThrow<string>('bunny.stream.libraryId');
-    const apiKey = this.config.getOrThrow<string>('bunny.stream.apiKey');
+    const libraryId = this.config.getOrThrow<string>("bunny.stream.libraryId");
+    const apiKey = this.config.getOrThrow<string>("bunny.stream.apiKey");
     const url = `https://video.bunnycdn.com/library/${libraryId}/videos/${publicId}`;
 
     const response = await fetch(url, {
-      method: 'DELETE',
+      method: "DELETE",
       headers: {
-        Accept: 'application/json',
+        Accept: "application/json",
         AccessKey: apiKey,
       },
     });
 
     if (!response.ok && response.status !== 404) {
-      const body = await response.text().catch(() => '');
+      const body = await response.text().catch(() => "");
       throw new Error(`HTTP ${response.status}: ${body}`);
     }
   }
 
   private async pingStream(): Promise<boolean> {
     try {
-      const libraryId = this.config.getOrThrow<string>('bunny.stream.libraryId');
-      const apiKey = this.config.getOrThrow<string>('bunny.stream.apiKey');
+      const libraryId = this.config.getOrThrow<string>(
+        "bunny.stream.libraryId",
+      );
+      const apiKey = this.config.getOrThrow<string>("bunny.stream.apiKey");
       // Lightweight list call (page size 1).
       const url = `https://video.bunnycdn.com/library/${libraryId}/videos?page=1&itemsPerPage=1`;
       const response = await fetch(url, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          Accept: 'application/json',
+          Accept: "application/json",
           AccessKey: apiKey,
         },
       });
@@ -674,8 +731,8 @@ export class BunnyService implements OnApplicationBootstrap {
 
   private pickProgressiveResolution(resource?: BunnyResourceInfo): string {
     const preferred = (
-      this.config.get<string>('bunny.stream.defaultResolution') ?? '720'
-    ).replace(/p$/i, '');
+      this.config.get<string>("bunny.stream.defaultResolution") ?? "720"
+    ).replace(/p$/i, "");
 
     const raw = resource?.availableResolutions?.trim();
     if (!raw) {
@@ -683,8 +740,8 @@ export class BunnyService implements OnApplicationBootstrap {
     }
 
     const heights = raw
-      .split(',')
-      .map((part) => Number(part.trim().replace(/p$/i, '')))
+      .split(",")
+      .map((part) => Number(part.trim().replace(/p$/i, "")))
       .filter((n) => Number.isFinite(n) && n > 0)
       .sort((a, b) => a - b);
 
@@ -701,20 +758,20 @@ export class BunnyService implements OnApplicationBootstrap {
 
   private extensionFromMime(mimeType: string): string {
     const map: Record<string, string> = {
-      'image/jpeg': '.jpg',
-      'image/png': '.png',
-      'image/webp': '.webp',
-      'image/gif': '.gif',
-      'video/mp4': '.mp4',
-      'video/webm': '.webm',
-      'video/quicktime': '.mov',
+      "image/jpeg": ".jpg",
+      "image/png": ".png",
+      "image/webp": ".webp",
+      "image/gif": ".gif",
+      "video/mp4": ".mp4",
+      "video/webm": ".webm",
+      "video/quicktime": ".mov",
     };
-    return map[mimeType.toLowerCase()] ?? '';
+    return map[mimeType.toLowerCase()] ?? "";
   }
 
   private formatFromPath(path: string): string | undefined {
-    const base = path.split('/').pop() ?? path;
-    const dot = base.lastIndexOf('.');
+    const base = path.split("/").pop() ?? path;
+    const dot = base.lastIndexOf(".");
     if (dot < 0) {
       return undefined;
     }

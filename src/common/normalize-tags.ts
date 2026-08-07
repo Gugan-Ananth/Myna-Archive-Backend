@@ -7,7 +7,7 @@ export function normalizeTags(tags: string[]): string[] {
   const result: string[] = [];
 
   for (const raw of tags) {
-    const cleaned = raw.trim().replace(/^#/, '').toLowerCase();
+    const cleaned = raw.trim().replace(/^#/, "").toLowerCase();
     if (!cleaned || seen.has(cleaned)) {
       continue;
     }

@@ -10,17 +10,17 @@ import {
   Patch,
   Post,
   Query,
-} from '@nestjs/common';
-import { ArchiveItemsService } from './archive-items.service';
+} from "@nestjs/common";
+import { ArchiveItemsService } from "./archive-items.service";
 import type {
   ArchiveItemResponse,
   PaginatedArchiveItemsResponse,
-} from './dto/archive-item-response.dto';
-import { CreateArchiveItemDto } from './dto/create-archive-item.dto';
-import { ListArchiveItemsQueryDto } from './dto/list-archive-items-query.dto';
-import { UpdateArchiveItemDto } from './dto/update-archive-item.dto';
+} from "./dto/archive-item-response.dto";
+import { CreateArchiveItemDto } from "./dto/create-archive-item.dto";
+import { ListArchiveItemsQueryDto } from "./dto/list-archive-items-query.dto";
+import { UpdateArchiveItemDto } from "./dto/update-archive-item.dto";
 
-@Controller('archive-items')
+@Controller("archive-items")
 export class ArchiveItemsController {
   constructor(private readonly archiveItemsService: ArchiveItemsService) {}
 
@@ -37,24 +37,24 @@ export class ArchiveItemsController {
     return this.archiveItemsService.findAll(query);
   }
 
-  @Get(':id')
+  @Get(":id")
   findOne(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param("id", ParseUUIDPipe) id: string,
   ): Promise<ArchiveItemResponse> {
     return this.archiveItemsService.findOne(id);
   }
 
-  @Patch(':id')
+  @Patch(":id")
   update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: UpdateArchiveItemDto,
   ): Promise<ArchiveItemResponse> {
     return this.archiveItemsService.update(id, dto);
   }
 
-  @Delete(':id')
+  @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
+  async remove(@Param("id", ParseUUIDPipe) id: string): Promise<void> {
     await this.archiveItemsService.remove(id);
   }
 }

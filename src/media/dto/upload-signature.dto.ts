@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Type } from "class-transformer";
 import {
   IsIn,
   IsInt,
@@ -7,11 +7,11 @@ import {
   Max,
   Min,
   MinLength,
-} from 'class-validator';
+} from "class-validator";
 
 export class UploadSignatureDto {
-  @IsIn(['image', 'video'])
-  mediaType!: 'image' | 'video';
+  @IsIn(["image", "video"])
+  mediaType!: "image" | "video";
 
   @IsString()
   @MinLength(1)
@@ -35,12 +35,12 @@ export class UploadSignatureDto {
  * - **video**: Stream TUS resumable upload (`uploadMethod: "TUS"`)
  */
 export type UploadSignatureResponse = {
-  provider: 'bunny';
-  mediaType: 'image' | 'video';
-  resourceType: 'image' | 'video';
+  provider: "bunny";
+  mediaType: "image" | "video";
+  resourceType: "image" | "video";
   /** Storage path (image) or Stream video GUID (video). Use as create `publicId`. */
   publicId: string;
-  uploadMethod: 'PUT' | 'TUS';
+  uploadMethod: "PUT" | "TUS";
   chunkSize: number;
   maxBytes: number;
 

@@ -1,8 +1,8 @@
-import { Controller, Get } from '@nestjs/common';
-import { BunnyService } from '../media/bunny.service';
-import { DatabaseHealthService } from '../database/database-health.service';
+import { Controller, Get } from "@nestjs/common";
+import { BunnyService } from "../media/bunny.service";
+import { DatabaseHealthService } from "../database/database-health.service";
 
-@Controller('health')
+@Controller("health")
 export class HealthController {
   constructor(
     private readonly databaseHealth: DatabaseHealthService,
@@ -11,7 +11,7 @@ export class HealthController {
 
   @Get()
   async check(): Promise<{
-    status: 'ok' | 'degraded';
+    status: "ok" | "degraded";
     postgres: boolean;
     bunny: boolean;
   }> {
@@ -21,7 +21,7 @@ export class HealthController {
     ]);
 
     return {
-      status: postgres && bunnyOk ? 'ok' : 'degraded',
+      status: postgres && bunnyOk ? "ok" : "degraded",
       postgres,
       bunny: bunnyOk,
     };

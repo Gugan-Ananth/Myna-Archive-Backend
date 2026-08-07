@@ -1,27 +1,26 @@
-export type MediaType = 'image' | 'video';
+export type MediaType = "image" | "video";
 
 /** Provider-agnostic resource kind stored on Archive Item (`resourceType`). */
-export type MediaResourceType = 'image' | 'video';
-
+export type MediaResourceType = "image" | "video";
 
 export const IMAGE_MIME_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/gif',
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
 ] as const;
 
 export const VIDEO_MIME_TYPES = [
-  'video/mp4',
-  'video/webm',
-  'video/quicktime',
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
 ] as const;
 
-export const IMAGE_FORMATS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif']);
-export const VIDEO_FORMATS = new Set(['mp4', 'webm', 'mov', 'qt']);
+export const IMAGE_FORMATS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
+export const VIDEO_FORMATS = new Set(["mp4", "webm", "mov", "qt"]);
 
 export function isMediaType(value: string): value is MediaType {
-  return value === 'image' || value === 'video';
+  return value === "image" || value === "video";
 }
 
 export function mimeMatchesMediaType(
@@ -29,7 +28,7 @@ export function mimeMatchesMediaType(
   mediaType: MediaType,
 ): boolean {
   const normalized = mimeType.toLowerCase();
-  if (mediaType === 'image') {
+  if (mediaType === "image") {
     return (IMAGE_MIME_TYPES as readonly string[]).includes(normalized);
   }
   return (VIDEO_MIME_TYPES as readonly string[]).includes(normalized);
@@ -43,7 +42,7 @@ export function formatAllowedForMediaType(
     return true;
   }
   const normalized = format.toLowerCase();
-  return mediaType === 'image'
+  return mediaType === "image"
     ? IMAGE_FORMATS.has(normalized)
     : VIDEO_FORMATS.has(normalized);
 }
