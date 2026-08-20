@@ -41,6 +41,29 @@ describe("TagsService", () => {
     ]);
   });
 
+  it("scopes the vocabulary to a media type and single images", async () => {
+    repository.query.mockResolvedValue([]);
+
+    await service.listSummaries({ mediaType: "image", imageGroup: false });
+
+    const [sql, params] = repository.query.mock.calls[0] as [string, string[]];
+    expect(sql).toContain('item."mediaType" = $1');
+    expect(sql).toContain("jsonb_array_length");
+    expect(sql).toContain("<= 1");
+    expect(params).toEqual(["image"]);
+  });
+
+  it("scopes the vocabulary to image groups", async () => {
+    repository.query.mockResolvedValue([]);
+
+    await service.listSummaries({ mediaType: "image", imageGroup: true });
+
+    const [sql, params] = repository.query.mock.calls[0] as [string, string[]];
+    expect(sql).toContain('item."mediaType" = $1');
+    expect(sql).toContain(">= 2");
+    expect(params).toEqual(["image"]);
+  });
+
   it("returns empty list when there are no tags", async () => {
     repository.query.mockResolvedValue([]);
     await expect(service.listSummaries()).resolves.toEqual([]);

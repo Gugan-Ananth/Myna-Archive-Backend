@@ -12,18 +12,43 @@ export class TagsService {
   ) {}
 
   /**
-   * Collection-wide tag vocabulary with usage counts.
+   * Tag vocabulary with usage counts, optionally scoped to a media section.
    * Ordered by count DESC, then tag ASC (ADR 0008).
    */
-  async listSummaries(): Promise<TagSummary[]> {
+  async listSummaries(filter: {
+    mediaType?: "image" | "video" | "story";
+    imageGroup?: boolean;
+  } = {}): Promise<TagSummary[]> {
+    const params: string[] = [];
+    const where: string[] = [];
+
+    if (filter.mediaType) {
+      params.push(filter.mediaType);
+      where.push(`item."mediaType" = $${params.length}`);
+    }
+
+    if (filter.imageGroup === true) {
+      where.push(
+        `item."mediaAssets" IS NOT NULL AND jsonb_typeof(item."mediaAssets") = 'array' AND jsonb_array_length(item."mediaAssets") >= 2`,
+      );
+    } else if (filter.imageGroup === false) {
+      where.push(
+        `(item."mediaAssets" IS NULL OR jsonb_typeof(item."mediaAssets") <> 'array' OR jsonb_array_length(item."mediaAssets") <= 1)`,
+      );
+    }
+
+    const whereSql = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+
     const rows: unknown = await this.archiveItems.query(
       `
       SELECT t.tag AS tag, COUNT(*)::int AS count
       FROM archive_items item
       CROSS JOIN LATERAL unnest(item.tags) AS t(tag)
+      ${whereSql}
       GROUP BY t.tag
       ORDER BY count DESC, t.tag ASC
       `,
+      params,
     );
 
     if (!Array.isArray(rows)) {

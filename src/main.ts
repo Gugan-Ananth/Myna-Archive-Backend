@@ -26,6 +26,9 @@ async function bootstrap() {
     app.enableCors({ origin: corsOrigin });
   }
 
+  // Trust the first reverse proxy so req.ip / X-Forwarded-For is the client.
+  app.getHttpAdapter().getInstance().set("trust proxy", 1);
+
   const port = config.get<number>("port") ?? 3001;
   await app.listen(port);
   logger.log(`Listening on http://localhost:${port}`);

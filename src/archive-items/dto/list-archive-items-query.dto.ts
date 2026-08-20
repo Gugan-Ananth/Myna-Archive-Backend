@@ -1,6 +1,7 @@
 import { Transform, Type } from "class-transformer";
 import {
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -8,6 +9,12 @@ import {
   Max,
   Min,
 } from "class-validator";
+
+function toOptionalBoolean(value: unknown): boolean | undefined {
+  if (value === true || value === "true" || value === "1") return true;
+  if (value === false || value === "false" || value === "0") return false;
+  return undefined;
+}
 
 function toScalarString(value: unknown): string {
   if (typeof value === "string") return value;
@@ -41,8 +48,24 @@ export class ListArchiveItemsQueryDto {
   tag?: string[];
 
   @IsOptional()
-  @IsIn(["image", "video"])
-  mediaType?: "image" | "video";
+  @IsIn(["image", "video", "story"])
+  mediaType?: "image" | "video" | "story";
+
+  /**
+   * When set with mediaType=image:
+   * true = image groups (2+ assets); false = single images.
+   * Query string "true"/"false" (implicit boolean conversion treats "false" as true).
+   */
+  @IsOptional()
+  @Transform(({ value }) => toOptionalBoolean(value))
+  @IsBoolean()
+  imageGroup?: boolean;
+
+  /** When true with mediaType=story, only series roots (not later chapters). */
+  @IsOptional()
+  @Transform(({ value }) => toOptionalBoolean(value))
+  @IsBoolean()
+  storyRoot?: boolean;
 
   @IsOptional()
   @Type(() => Number)

@@ -20,8 +20,25 @@ describe("ArchiveItemsService", () => {
       } as ArchiveItemEntity),
     ),
     findOne: jest.fn(),
+    find: jest.fn(() => Promise.resolve([])),
     remove: jest.fn(() => Promise.resolve(undefined)),
-    createQueryBuilder: jest.fn(),
+    createQueryBuilder: jest.fn(() => {
+      const qb: Record<string, jest.Mock> = {};
+      const chain = () => qb;
+      qb.select = jest.fn(chain);
+      qb.addSelect = jest.fn(chain);
+      qb.where = jest.fn(chain);
+      qb.andWhere = jest.fn(chain);
+      qb.groupBy = jest.fn(chain);
+      qb.orderBy = jest.fn(chain);
+      qb.addOrderBy = jest.fn(chain);
+      qb.skip = jest.fn(chain);
+      qb.take = jest.fn(chain);
+      qb.getCount = jest.fn(() => Promise.resolve(0));
+      qb.getMany = jest.fn(() => Promise.resolve([]));
+      qb.getRawMany = jest.fn(() => Promise.resolve([]));
+      return qb;
+    }),
   };
 
   const bunny = {
@@ -149,6 +166,115 @@ describe("ArchiveItemsService", () => {
         "myna-archive/b.jpg",
         "myna-archive/c.jpg",
       ]);
+    });
+
+    it("creates a written story and binds inline images in document order", async () => {
+      bunny.verifyAndDeriveUrls.mockImplementation(
+        (params: { publicId: string }) =>
+          Promise.resolve(mockImageVerify(params.publicId)),
+      );
+
+      const result = await service.create({
+        mediaType: "story",
+        name: "Night letter",
+        tags: ["bondage:hogtie"],
+        rating: 8,
+        bodyHtml:
+          '<p>before</p><img src="data:image/png;base64,aaa"><p>mid</p><img src="data:image/png;base64,bbb"><p>after</p>',
+        assets: [
+          { publicId: "myna-archive/s1.jpg", resourceType: "image" },
+          { publicId: "myna-archive/s2.jpg", resourceType: "image" },
+        ],
+      });
+
+      expect(result.mediaType).toBe("story");
+      expect(result.mediaAssets).toHaveLength(2);
+      expect(result.bodyHtml).toContain("<p>before</p>");
+      expect(result.bodyHtml).toContain("<p>mid</p>");
+      expect(result.bodyHtml).toContain("<p>after</p>");
+      expect(result.bodyHtml.indexOf("s1.jpg")).toBeLessThan(
+        result.bodyHtml.indexOf("s2.jpg"),
+      );
+      expect(result.bodyHtml).not.toContain("data:image");
+    });
+
+    it("creates a text-only story without media assets", async () => {
+      const result = await service.create({
+        mediaType: "story",
+        name: "Note",
+        tags: ["x"],
+        rating: 5,
+        bodyHtml: "<p>hello</p>",
+      });
+
+      expect(bunny.verifyAndDeriveUrls).not.toHaveBeenCalled();
+      expect(result.mediaType).toBe("story");
+      expect(result.mediaAssets).toEqual([]);
+      expect(result.bodyHtml).toContain("<p>hello</p>");
+      expect(result.mediaUrl).toBe("");
+    });
+
+    it("treats an extra leading asset as an optional story cover", async () => {
+      bunny.verifyAndDeriveUrls.mockImplementation(
+        (params: { publicId: string }) =>
+          Promise.resolve(mockImageVerify(params.publicId)),
+      );
+
+      const result = await service.create({
+        mediaType: "story",
+        name: "Covered letter",
+        tags: ["x"],
+        rating: 7,
+        bodyHtml: '<p>hi</p><img src="data:image/png;base64,aaa">',
+        assets: [
+          { publicId: "myna-archive/cover.jpg", resourceType: "image" },
+          { publicId: "myna-archive/inline.jpg", resourceType: "image" },
+        ],
+      });
+
+      expect(result.mediaAssets).toHaveLength(2);
+      expect(result.mediaUrl).toContain("cover.jpg");
+      expect(result.bodyHtml).toContain("inline.jpg");
+      expect(result.bodyHtml).not.toContain("cover.jpg");
+    });
+
+    it("creates a cover-only story with no inline images", async () => {
+      bunny.verifyAndDeriveUrls.mockImplementation(
+        (params: { publicId: string }) =>
+          Promise.resolve(mockImageVerify(params.publicId)),
+      );
+
+      const result = await service.create({
+        mediaType: "story",
+        name: "Cover only",
+        tags: ["x"],
+        rating: 5,
+        bodyHtml: "<p>hello</p>",
+        assets: [
+          { publicId: "myna-archive/cover.jpg", resourceType: "image" },
+        ],
+      });
+
+      expect(result.mediaAssets).toHaveLength(1);
+      expect(result.mediaUrl).toContain("cover.jpg");
+      expect(result.bodyHtml).toContain("<p>hello</p>");
+      expect(result.bodyHtml).not.toContain("cover.jpg");
+    });
+
+    it("rejects stories whose image count does not match assets", async () => {
+      await expect(
+        service.create({
+          mediaType: "story",
+          name: "Mismatch",
+          tags: ["x"],
+          rating: 1,
+          bodyHtml: "<p>no images</p>",
+          assets: [
+            { publicId: "myna-archive/s1.jpg", resourceType: "image" },
+            { publicId: "myna-archive/s2.jpg", resourceType: "image" },
+          ],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it("rejects image groups with more than 10 assets", async () => {
@@ -388,6 +514,83 @@ describe("ArchiveItemsService", () => {
         "image",
       );
       expect(repository.remove).toHaveBeenCalled();
+    });
+
+    it("deletes a later story chapter without removing the series", async () => {
+      repository.findOne.mockResolvedValue({
+        id: "22222222-2222-2222-2222-222222222222",
+        publicId: "",
+        resourceType: "image",
+        name: "test",
+        description: "",
+        tags: ["x"],
+        rating: 5,
+        mediaType: "story",
+        seriesId: "11111111-1111-1111-1111-111111111111",
+        chapterNumber: 2,
+        thumbnailUrl: "",
+        mediaUrl: "",
+        mediaAssets: [],
+      });
+
+      await service.remove("22222222-2222-2222-2222-222222222222");
+
+      expect(repository.remove).toHaveBeenCalledTimes(1);
+      expect(repository.save).not.toHaveBeenCalled();
+    });
+
+    it("promotes the next chapter to root when chapter 1 is deleted", async () => {
+      const root = {
+        id: "11111111-1111-1111-1111-111111111111",
+        publicId: "",
+        resourceType: "image",
+        name: "Night letter",
+        description: "",
+        tags: ["x"],
+        rating: 8,
+        mediaType: "story",
+        seriesId: null,
+        chapterNumber: 1,
+        thumbnailUrl: "",
+        mediaUrl: "",
+        mediaAssets: [],
+      };
+      const chapter2 = {
+        id: "22222222-2222-2222-2222-222222222222",
+        name: "Night letter",
+        mediaType: "story",
+        seriesId: root.id,
+        chapterNumber: 2,
+        mediaAssets: [],
+      };
+      const chapter3 = {
+        id: "33333333-3333-3333-3333-333333333333",
+        name: "Night letter",
+        mediaType: "story",
+        seriesId: root.id,
+        chapterNumber: 3,
+        mediaAssets: [],
+      };
+      repository.findOne.mockResolvedValue(root);
+      repository.find.mockResolvedValue([chapter3, chapter2]);
+
+      await service.remove(root.id);
+
+      expect(repository.remove).toHaveBeenCalledTimes(1);
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: chapter2.id,
+          seriesId: null,
+          name: "Night letter",
+          chapterNumber: 2,
+        }),
+      );
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: chapter3.id,
+          seriesId: chapter2.id,
+        }),
+      );
     });
   });
 });

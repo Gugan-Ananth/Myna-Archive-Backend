@@ -7,6 +7,13 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { normalizeTags } from "../common/normalize-tags";
+import {
+  applyStoryAssets,
+  MAX_STORY_ASSETS,
+  partitionStoryAssets,
+  sanitizeStoryHtml,
+} from "../common/story-html";
+import type { MediaType } from "../common/media-type";
 import { BunnyService } from "../media/bunny.service";
 import { TaxonomyService } from "../taxonomy/taxonomy.service";
 import {
@@ -49,34 +56,57 @@ export class ArchiveItemsService {
     const assetInputs = this.normalizeAssetInputs(dto);
     this.assertAssetRules(dto.mediaType, assetInputs);
 
-    // Verify all Bunny assets (parallel — multi-image groups can be up to 10).
+    const verifyType: "image" | "video" =
+      dto.mediaType === "video" ? "video" : "image";
     const mediaAssets = await Promise.all(
-      assetInputs.map((asset) => this.verifyAsset(dto.mediaType, asset)),
+      assetInputs.map((asset) => this.verifyAsset(verifyType, asset)),
     );
 
+    let bodyHtml = "";
+    if (dto.mediaType === "story") {
+      const raw = sanitizeStoryHtml(dto.bodyHtml ?? "");
+      const parts = partitionStoryAssets(raw, mediaAssets);
+      if (!parts) {
+        throw new BadRequestException(
+          "Story body image count must match assets[] length and order",
+        );
+      }
+      bodyHtml = applyStoryAssets(raw, parts.body);
+    }
+
     const cover = mediaAssets[0];
-    if (!cover) {
+    if (!cover && dto.mediaType !== "story") {
       throw new BadRequestException("At least one media asset is required");
     }
+
+    const series = await this.resolveStorySeries(dto);
 
     const entity = this.archiveItems.create({
       name: dto.name.trim(),
       description: dto.description?.trim() ?? "",
+      bodyHtml,
+      summary: dto.summary?.trim() ?? "",
       tags,
       rating: dto.rating,
       mediaType: dto.mediaType,
-      thumbnailUrl: cover.thumbnailUrl,
-      mediaUrl: cover.mediaUrl,
-      width: cover.width,
-      height: cover.height,
-      blurHash: cover.blurHash,
-      publicId: cover.publicId,
-      resourceType: cover.resourceType,
-      mediaAssets,
+      seriesId: series.seriesId,
+      chapterNumber: series.chapterNumber,
+      thumbnailUrl: cover?.thumbnailUrl ?? "",
+      mediaUrl: cover?.mediaUrl ?? "",
+      width: cover?.width ?? null,
+      height: cover?.height ?? null,
+      blurHash: cover?.blurHash ?? null,
+      publicId: cover?.publicId ?? "",
+      resourceType: cover?.resourceType ?? "image",
+      mediaAssets: mediaAssets.length > 0 ? mediaAssets : [],
     });
 
     const saved = await this.archiveItems.save(entity);
-    return toArchiveItemResponse(saved);
+    const chapterCount =
+      dto.mediaType === "story"
+        ? await this.chapterCountForRoot(saved.seriesId ?? saved.id)
+        : 1;
+    return toArchiveItemResponse(saved, { chapterCount });
   }
 
   async findAll(
@@ -93,6 +123,20 @@ export class ArchiveItemsService {
       });
     }
 
+    if (query.storyRoot) {
+      qb.andWhere("item.seriesId IS NULL");
+    }
+
+    if (query.imageGroup === true) {
+      qb.andWhere(
+        "item.mediaAssets IS NOT NULL AND jsonb_typeof(item.mediaAssets) = 'array' AND jsonb_array_length(item.mediaAssets) >= 2",
+      );
+    } else if (query.imageGroup === false) {
+      qb.andWhere(
+        "(item.mediaAssets IS NULL OR jsonb_typeof(item.mediaAssets) <> 'array' OR jsonb_array_length(item.mediaAssets) <= 1)",
+      );
+    }
+
     if (query.tag && query.tag.length > 0) {
       const tags = normalizeTags(query.tag);
       if (tags.length > 0) {
@@ -103,7 +147,7 @@ export class ArchiveItemsService {
     if (query.q?.trim()) {
       const q = `%${query.q.trim().toLowerCase()}%`;
       qb.andWhere(
-        `(LOWER(item.name) LIKE :q OR LOWER(item.description) LIKE :q OR EXISTS (
+        `(LOWER(item.name) LIKE :q OR LOWER(item.description) LIKE :q OR LOWER(item.bodyHtml) LIKE :q OR EXISTS (
           SELECT 1 FROM unnest(item.tags) AS t WHERE LOWER(t) LIKE :q
         ))`,
         { q },
@@ -118,8 +162,18 @@ export class ArchiveItemsService {
       .take(pageSize)
       .getMany();
 
+    const counts = await this.chapterCountsForRoots(
+      entities
+        .filter((item) => item.mediaType === "story" && !item.seriesId)
+        .map((item) => item.id),
+    );
+
     return {
-      data: entities.map(toArchiveItemResponse),
+      data: entities.map((item) =>
+        toArchiveItemResponse(item, {
+          chapterCount: counts.get(item.id) ?? 1,
+        }),
+      ),
       meta: {
         page,
         pageSize,
@@ -131,7 +185,34 @@ export class ArchiveItemsService {
 
   async findOne(id: string): Promise<ArchiveItemResponse> {
     const entity = await this.findEntityOrFail(id);
-    return toArchiveItemResponse(entity);
+    const rootId =
+      entity.mediaType === "story" ? (entity.seriesId ?? entity.id) : entity.id;
+    const chapterCount =
+      entity.mediaType === "story" ? await this.chapterCountForRoot(rootId) : 1;
+    return toArchiveItemResponse(entity, { chapterCount });
+  }
+
+  async listChapters(
+    id: string,
+  ): Promise<{ data: ArchiveItemResponse[] }> {
+    const entity = await this.findEntityOrFail(id);
+    if (entity.mediaType !== "story") {
+      throw new BadRequestException("Chapters are only available for stories");
+    }
+    const rootId = entity.seriesId ?? entity.id;
+    const chapters = await this.archiveItems.find({
+      where: [
+        { id: rootId, mediaType: "story" },
+        { seriesId: rootId, mediaType: "story" },
+      ],
+      order: { chapterNumber: "ASC" },
+    });
+    const chapterCount = chapters.length;
+    return {
+      data: chapters.map((item) =>
+        toArchiveItemResponse(item, { chapterCount }),
+      ),
+    };
   }
 
   async update(
@@ -145,6 +226,49 @@ export class ArchiveItemsService {
     }
     if (dto.description !== undefined) {
       entity.description = dto.description.trim();
+    }
+    if (dto.summary !== undefined) {
+      entity.summary = dto.summary.trim();
+    }
+    if (entity.mediaType === "story") {
+      if (dto.assets !== undefined) {
+        this.assertAssetRules("story", dto.assets);
+        const mediaAssets = await Promise.all(
+          dto.assets.map((asset) => this.verifyAsset("image", asset)),
+        );
+        const raw = sanitizeStoryHtml(dto.bodyHtml ?? entity.bodyHtml ?? "");
+        const parts = partitionStoryAssets(raw, mediaAssets);
+        if (!parts) {
+          throw new BadRequestException(
+            "Story body image count must match assets[] length and order",
+          );
+        }
+        entity.bodyHtml = applyStoryAssets(raw, parts.body);
+        const cover = mediaAssets[0];
+        entity.mediaAssets = mediaAssets;
+        entity.thumbnailUrl = cover?.thumbnailUrl ?? "";
+        entity.mediaUrl = cover?.mediaUrl ?? "";
+        entity.width = cover?.width ?? null;
+        entity.height = cover?.height ?? null;
+        entity.blurHash = cover?.blurHash ?? null;
+        entity.publicId = cover?.publicId ?? "";
+        entity.resourceType = cover?.resourceType ?? "image";
+      } else if (dto.bodyHtml !== undefined) {
+        const raw = sanitizeStoryHtml(dto.bodyHtml);
+        const existing = resolveMediaAssets(entity);
+        const parts = partitionStoryAssets(entity.bodyHtml ?? "", existing);
+        const body = parts?.body ?? existing;
+        const next = partitionStoryAssets(
+          raw,
+          parts?.cover ? [parts.cover, ...body] : body,
+        );
+        if (!next) {
+          throw new BadRequestException(
+            "Story body image count must match assets[] length and order",
+          );
+        }
+        entity.bodyHtml = applyStoryAssets(raw, next.body);
+      }
     }
     if (dto.rating !== undefined) {
       entity.rating = dto.rating;
@@ -161,22 +285,71 @@ export class ArchiveItemsService {
     }
 
     const saved = await this.archiveItems.save(entity);
-    return toArchiveItemResponse(saved);
+    const rootId =
+      saved.mediaType === "story" ? (saved.seriesId ?? saved.id) : saved.id;
+    const chapterCount =
+      saved.mediaType === "story" ? await this.chapterCountForRoot(rootId) : 1;
+    return toArchiveItemResponse(saved, { chapterCount });
   }
 
   async remove(id: string): Promise<void> {
     const entity = await this.findEntityOrFail(id);
-    const assets = resolveMediaAssets(entity);
 
-    // Destroy every Bunny asset in the group (best-effort per asset).
-    for (const asset of assets) {
-      const resourceType = asset.resourceType === "video" ? "video" : "image";
-      await this.bunny.destroy(asset.publicId, resourceType);
+    if (entity.mediaType === "story") {
+      await this.removeStoryChapter(entity);
+      return;
     }
 
+    const assets = resolveMediaAssets(entity);
+    await this.destroyItemAssets(entity);
     await this.archiveItems.remove(entity);
     this.logger.log(
       `Deleted archive item ${id} (${assets.length} media asset(s))`,
+    );
+  }
+
+  /**
+   * Delete only this chapter. If it is the series root and later chapters
+   * remain, promote the lowest remaining chapter to root (same story name,
+   * same chapter numbers) so chapter 1 can be written again.
+   */
+  private async removeStoryChapter(
+    entity: ArchiveItemEntity,
+  ): Promise<void> {
+    const isRoot = !entity.seriesId;
+    const children = isRoot
+      ? await this.archiveItems.find({
+          where: { seriesId: entity.id, mediaType: "story" },
+        })
+      : [];
+
+    const assets = resolveMediaAssets(entity);
+    await this.destroyItemAssets(entity);
+    await this.archiveItems.remove(entity);
+
+    if (isRoot && children.length > 0) {
+      const remaining = [...children].sort(
+        (a, b) => (a.chapterNumber ?? 1) - (b.chapterNumber ?? 1),
+      );
+      const promoted = remaining[0];
+      if (!promoted) {
+        return;
+      }
+      const rest = remaining.slice(1);
+      promoted.seriesId = null;
+      promoted.name = entity.name;
+      if (!promoted.summary?.trim() && entity.summary) {
+        promoted.summary = entity.summary;
+      }
+      await this.archiveItems.save(promoted);
+      for (const child of rest) {
+        child.seriesId = promoted.id;
+        await this.archiveItems.save(child);
+      }
+    }
+
+    this.logger.log(
+      `Deleted story chapter ${entity.id} (${assets.length} media asset(s))`,
     );
   }
 
@@ -185,6 +358,10 @@ export class ArchiveItemsService {
   ): CreateMediaAssetDto[] {
     if (dto.assets && dto.assets.length > 0) {
       return dto.assets;
+    }
+
+    if (dto.mediaType === "story") {
+      return [];
     }
 
     if (!dto.publicId || !dto.resourceType) {
@@ -205,7 +382,7 @@ export class ArchiveItemsService {
   }
 
   private assertAssetRules(
-    mediaType: "image" | "video",
+    mediaType: MediaType,
     assets: CreateMediaAssetDto[],
   ): void {
     const publicIds = assets.map((a) => a.publicId.trim());
@@ -213,6 +390,20 @@ export class ArchiveItemsService {
       throw new BadRequestException(
         "Each media asset must have a unique publicId",
       );
+    }
+
+    if (mediaType === "story") {
+      if (assets.length > MAX_STORY_ASSETS + 1) {
+        throw new BadRequestException(
+          `Stories may have at most ${MAX_STORY_ASSETS} inline images plus one cover`,
+        );
+      }
+      for (const asset of assets) {
+        if (asset.resourceType !== "image") {
+          throw new BadRequestException("Story images must be resourceType image");
+        }
+      }
+      return;
     }
 
     if (mediaType === "video") {
@@ -291,6 +482,93 @@ export class ArchiveItemsService {
       height,
       blurHash: blurHash.length > 0 ? blurHash : null,
     };
+  }
+
+  private async resolveStorySeries(dto: CreateArchiveItemDto): Promise<{
+    seriesId: string | null;
+    chapterNumber: number;
+  }> {
+    if (dto.mediaType !== "story") {
+      return { seriesId: null, chapterNumber: 1 };
+    }
+    if (!dto.seriesId) {
+      return { seriesId: null, chapterNumber: 1 };
+    }
+
+    const parent = await this.findEntityOrFail(dto.seriesId);
+    if (parent.mediaType !== "story") {
+      throw new BadRequestException("Chapters can only be linked to a story");
+    }
+    const rootId = parent.seriesId ?? parent.id;
+    const chapterNumber =
+      dto.chapterNumber ?? (await this.nextChapterNumber(rootId));
+    await this.assertChapterAvailable(rootId, chapterNumber);
+    return { seriesId: rootId, chapterNumber };
+  }
+
+  private async nextChapterNumber(rootId: string): Promise<number> {
+    const chapters = await this.archiveItems.find({
+      where: [{ id: rootId }, { seriesId: rootId }],
+      select: ["chapterNumber"],
+    });
+    const taken = new Set(
+      chapters.map((item) => item.chapterNumber ?? 1),
+    );
+    let n = 1;
+    while (taken.has(n)) n += 1;
+    return n;
+  }
+
+  private async assertChapterAvailable(
+    rootId: string,
+    chapterNumber: number,
+  ): Promise<void> {
+    const taken = await this.archiveItems.findOne({
+      where: [
+        { id: rootId, chapterNumber },
+        { seriesId: rootId, chapterNumber },
+      ],
+    });
+    if (taken) {
+      throw new BadRequestException(
+        `Chapter ${chapterNumber} already exists in this story`,
+      );
+    }
+  }
+
+  private async chapterCountForRoot(rootId: string): Promise<number> {
+    const counts = await this.chapterCountsForRoots([rootId]);
+    return counts.get(rootId) ?? 1;
+  }
+
+  private async chapterCountsForRoots(
+    rootIds: string[],
+  ): Promise<Map<string, number>> {
+    const map = new Map<string, number>();
+    for (const id of rootIds) map.set(id, 1);
+    if (rootIds.length === 0) return map;
+
+    const rows: Array<{ sid: string; n: string }> = await this.archiveItems
+      .createQueryBuilder("ch")
+      .select("ch.seriesId", "sid")
+      .addSelect("COUNT(*)", "n")
+      .where("ch.seriesId IN (:...ids)", { ids: rootIds })
+      .groupBy("ch.seriesId")
+      .getRawMany();
+
+    for (const row of rows) {
+      map.set(row.sid, 1 + Number(row.n));
+    }
+    return map;
+  }
+
+  private async destroyItemAssets(entity: ArchiveItemEntity): Promise<void> {
+    const assets = resolveMediaAssets(entity);
+    for (const asset of assets) {
+      if (!asset.publicId) continue;
+      const resourceType = asset.resourceType === "video" ? "video" : "image";
+      await this.bunny.destroy(asset.publicId, resourceType);
+    }
   }
 
   private async findEntityOrFail(id: string): Promise<ArchiveItemEntity> {

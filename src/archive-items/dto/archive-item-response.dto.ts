@@ -7,9 +7,19 @@ export type ArchiveItemResponse = {
   id: string;
   name: string;
   description: string;
+  /** Written story HTML; empty for image/video. */
+  bodyHtml: string;
+  /** Optional short story blurb for homepage cards. */
+  summary: string;
   tags: string[];
   rating: number;
   mediaType: MediaType;
+  /** Root story id when this row is a later chapter; null for the series root. */
+  seriesId: string | null;
+  /** 1-based chapter index. Roots are chapter 1. */
+  chapterNumber: number;
+  /** Chapters in the series (root + continuations). 1 for a lone story. */
+  chapterCount: number;
   /** Cover (first asset) — homepage grid. */
   thumbnailUrl: string;
   mediaUrl: string;
@@ -41,6 +51,10 @@ export function resolveMediaAssets(
     return entity.mediaAssets;
   }
 
+  if (entity.mediaType === "story" && !entity.publicId) {
+    return [];
+  }
+
   return [
     {
       publicId: entity.publicId,
@@ -56,6 +70,7 @@ export function resolveMediaAssets(
 
 export function toArchiveItemResponse(
   entity: ArchiveItemEntity,
+  extras?: { chapterCount?: number },
 ): ArchiveItemResponse {
   const mediaAssets = resolveMediaAssets(entity);
   const cover = mediaAssets[0];
@@ -64,9 +79,14 @@ export function toArchiveItemResponse(
     id: entity.id,
     name: entity.name,
     description: entity.description,
+    bodyHtml: entity.bodyHtml ?? "",
+    summary: entity.summary ?? "",
     tags: entity.tags,
     rating: entity.rating,
     mediaType: entity.mediaType,
+    seriesId: entity.seriesId ?? null,
+    chapterNumber: entity.chapterNumber ?? 1,
+    chapterCount: extras?.chapterCount ?? 1,
     thumbnailUrl: cover?.thumbnailUrl ?? entity.thumbnailUrl,
     mediaUrl: cover?.mediaUrl ?? entity.mediaUrl,
     width: cover?.width ?? entity.width ?? null,

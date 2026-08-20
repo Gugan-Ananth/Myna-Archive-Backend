@@ -37,6 +37,13 @@ export class ArchiveItemsController {
     return this.archiveItemsService.findAll(query);
   }
 
+  @Get(":id/chapters")
+  listChapters(
+    @Param("id", ParseUUIDPipe) id: string,
+  ): Promise<{ data: ArchiveItemResponse[] }> {
+    return this.archiveItemsService.listChapters(id);
+  }
+
   @Get(":id")
   findOne(
     @Param("id", ParseUUIDPipe) id: string,

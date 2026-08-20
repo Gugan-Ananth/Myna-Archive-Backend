@@ -19,6 +19,17 @@ export class ArchiveItemEntity {
   @Column({ type: "text", default: "" })
   description!: string;
 
+  /**
+   * Written story body (HTML). Empty for image/video items.
+   * Inline <img> src values are Bunny CDN URLs bound in document order.
+   */
+  @Column({ type: "text", default: "" })
+  bodyHtml!: string;
+
+  /** Optional short blurb for story homepage cards. */
+  @Column({ type: "varchar", length: 600, default: "" })
+  summary!: string;
+
   @Column({ type: "text", array: true, default: "{}" })
   tags!: string[];
 
@@ -28,6 +39,17 @@ export class ArchiveItemEntity {
 
   @Column({ type: "varchar", length: 16 })
   mediaType!: MediaType;
+
+  /**
+   * Root story this chapter belongs to. Null when this row is the series
+   * itself (chapter 1 / the work shown on the home Stories view).
+   */
+  @Column({ type: "uuid", nullable: true })
+  seriesId!: string | null;
+
+  /** 1-based chapter index within the series. Roots are chapter 1. */
+  @Column({ type: "int", default: 1 })
+  chapterNumber!: number;
 
   /**
    * Cover thumbnail (first media asset) — homepage grid.

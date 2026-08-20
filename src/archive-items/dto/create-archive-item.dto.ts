@@ -8,6 +8,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -15,7 +16,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from "class-validator";
-import { CreateMediaAssetDto, MAX_IMAGE_ASSETS } from "./media-asset.dto";
+import { CreateMediaAssetDto } from "./media-asset.dto";
 
 /**
  * Create Archive Item.
@@ -33,23 +34,29 @@ export class CreateArchiveItemDto {
   @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
-  @ArrayMaxSize(MAX_IMAGE_ASSETS)
+  @ArrayMaxSize(20)
   @ValidateNested({ each: true })
   @Type(() => CreateMediaAssetDto)
   assets?: CreateMediaAssetDto[];
 
   /** Legacy single-asset: required when `assets` is omitted. */
-  @ValidateIf((o: CreateArchiveItemDto) => !o.assets?.length)
+  @ValidateIf(
+    (o: CreateArchiveItemDto) =>
+      o.mediaType !== "story" && !o.assets?.length,
+  )
   @IsString()
   @MinLength(1)
   publicId?: string;
 
-  @ValidateIf((o: CreateArchiveItemDto) => !o.assets?.length)
+  @ValidateIf(
+    (o: CreateArchiveItemDto) =>
+      o.mediaType !== "story" && !o.assets?.length,
+  )
   @IsIn(["image", "video"])
   resourceType?: "image" | "video";
 
-  @IsIn(["image", "video"])
-  mediaType!: "image" | "video";
+  @IsIn(["image", "video", "story"])
+  mediaType!: "image" | "video" | "story";
 
   @IsString()
   @MinLength(1)
@@ -71,6 +78,30 @@ export class CreateArchiveItemDto {
   @IsString()
   @MaxLength(5000)
   description?: string;
+
+  /** Written story HTML. Inline images are rewritten to CDN URLs on save. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200_000)
+  bodyHtml?: string;
+
+  /** Optional short story blurb for the homepage card. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(600)
+  summary?: string;
+
+  /** Existing series root to attach this chapter to. */
+  @IsOptional()
+  @IsUUID()
+  seriesId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(999)
+  chapterNumber?: number;
 
   /** Legacy cover dims — ignored when `assets` carries per-slide dims. */
   @IsOptional()

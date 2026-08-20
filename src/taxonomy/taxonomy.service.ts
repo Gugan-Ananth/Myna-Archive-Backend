@@ -11,6 +11,8 @@ import { ArchiveItemEntity } from "../archive-items/entities/archive-item.entity
 import { humanizeSlug, slugify } from "../common/slugify";
 import { CreateCategoryDto } from "./dto/create-category.dto";
 import { CreateTaxonomyTagDto } from "./dto/create-taxonomy-tag.dto";
+import { UpdateCategoryDto } from "./dto/update-category.dto";
+import { UpdateTaxonomyTagDto } from "./dto/update-taxonomy-tag.dto";
 import type {
   TaxonomyCategoryDto,
   TaxonomyTagDto,
@@ -36,8 +38,11 @@ export class TaxonomyService implements OnModuleInit {
     await this.seedBuiltIns();
   }
 
-  /** Ensure seed categories/tags exist (idempotent). */
+  /** Seed built-ins only on an empty vocabulary so user deletes persist. */
   async seedBuiltIns(): Promise<void> {
+    const existing = await this.categories.count();
+    if (existing > 0) return;
+
     for (const seed of TAXONOMY_SEED) {
       let category = await this.categories.findOne({
         where: { slug: seed.slug },
@@ -160,6 +165,104 @@ export class TaxonomyService implements OnModuleInit {
     };
   }
 
+  async updateCategory(
+    categorySlug: string,
+    dto: UpdateCategoryDto,
+  ): Promise<TaxonomyCategoryDto> {
+    const category = await this.requireCategory(categorySlug);
+    const label = dto.label.trim();
+    const nextSlug = slugify(label);
+    if (!nextSlug) {
+      throw new BadRequestException("Category name is invalid after slugify");
+    }
+
+    if (nextSlug !== category.slug) {
+      const taken = await this.categories.findOne({ where: { slug: nextSlug } });
+      if (taken) {
+        throw new BadRequestException(
+          `Category “${nextSlug}” already exists`,
+        );
+      }
+      await this.rewriteCategoryPrefix(category.slug, nextSlug);
+      category.slug = nextSlug;
+    }
+    category.label = label;
+    await this.categories.save(category);
+    return this.getCategoryDto(category.slug);
+  }
+
+  async deleteCategory(categorySlug: string): Promise<void> {
+    const category = await this.requireCategory(categorySlug, true);
+    for (const tag of category.tags ?? []) {
+      await this.rewriteEncodedTag(`${category.slug}:${tag.slug}`, null);
+    }
+    await this.categories.remove(category);
+  }
+
+  async updateTag(
+    categorySlug: string,
+    tagSlug: string,
+    dto: UpdateTaxonomyTagDto,
+  ): Promise<{ categorySlug: string; tag: TaxonomyTagDto }> {
+    if (!dto.label?.trim() && !dto.categorySlug?.trim()) {
+      throw new BadRequestException("Provide a new label or destination category");
+    }
+
+    const source = await this.requireCategory(categorySlug);
+    const tag = await this.requireTag(source, tagSlug);
+    const fromEncoded = `${source.slug}:${tag.slug}`;
+
+    const destSlug = dto.categorySlug?.trim()
+      ? slugify(dto.categorySlug)
+      : source.slug;
+    if (!destSlug) {
+      throw new BadRequestException("Invalid destination category");
+    }
+    const dest =
+      destSlug === source.slug ? source : await this.requireCategory(destSlug);
+
+    const nextLabel = dto.label?.trim() || tag.label;
+    const nextSlug = dto.label?.trim() ? slugify(nextLabel) : tag.slug;
+    if (!nextSlug) {
+      throw new BadRequestException("Tag label is invalid after slugify");
+    }
+
+    const collision = await this.tags.findOne({
+      where: { categoryId: dest.id, slug: nextSlug },
+    });
+    if (collision && collision.id !== tag.id) {
+      await this.rewriteEncodedTag(fromEncoded, `${dest.slug}:${collision.slug}`);
+      await this.tags.remove(tag);
+      const counts = await this.usageCounts();
+      return {
+        categorySlug: dest.slug,
+        tag: this.toTagDto(dest.slug, collision, counts),
+      };
+    }
+
+    const toEncoded = `${dest.slug}:${nextSlug}`;
+    if (fromEncoded !== toEncoded) {
+      await this.rewriteEncodedTag(fromEncoded, toEncoded);
+    }
+    tag.label = nextLabel;
+    tag.slug = nextSlug;
+    tag.categoryId = dest.id;
+    tag.builtIn = dest.id === source.id ? tag.builtIn : false;
+    const saved = await this.tags.save(tag);
+    const counts = await this.usageCounts();
+    return {
+      categorySlug: dest.slug,
+      tag: this.toTagDto(dest.slug, saved, counts),
+    };
+  }
+
+  async deleteTag(categorySlug: string, tagSlug: string): Promise<void> {
+    const category = await this.requireCategory(categorySlug);
+    const tag = await this.requireTag(category, tagSlug);
+    await this.rewriteEncodedTag(`${category.slug}:${tag.slug}`, null);
+    await this.tags.remove(tag);
+  }
+
   /**
    * After normalizeTags on create/update: ensure every encoded `cat:tag`
    * exists in the taxonomy (auto-create user tags/categories as needed).
@@ -198,6 +301,84 @@ export class TaxonomyService implements OnModuleInit {
           }),
         );
       }
+    }
+  }
+
+  private async requireCategory(
+    categorySlug: string,
+    withTags = false,
+  ): Promise<TagCategoryEntity> {
+    const slug = slugify(categorySlug);
+    if (!slug) {
+      throw new BadRequestException("Invalid category slug");
+    }
+    const category = await this.categories.findOne({
+      where: { slug },
+      ...(withTags ? { relations: { tags: true } } : {}),
+    });
+    if (!category) {
+      throw new NotFoundException(`Category “${slug}” not found`);
+    }
+    return category;
+  }
+
+  private async requireTag(
+    category: TagCategoryEntity,
+    tagSlug: string,
+  ): Promise<TaxonomyTagEntity> {
+    const slug = slugify(tagSlug);
+    if (!slug) {
+      throw new BadRequestException("Invalid tag slug");
+    }
+    const tag = await this.tags.findOne({
+      where: { categoryId: category.id, slug },
+    });
+    if (!tag) {
+      throw new NotFoundException(
+        `Tag “${slug}” not found in “${category.slug}”`,
+      );
+    }
+    return tag;
+  }
+
+  /** Replace or strip one encoded tag on every archive item that uses it. */
+  private async rewriteEncodedTag(
+    from: string,
+    to: string | null,
+  ): Promise<void> {
+    const items = await this.archiveItems
+      .createQueryBuilder("item")
+      .where(":from = ANY (item.tags)", { from })
+      .getMany();
+    for (const item of items) {
+      const next = item.tags
+        .map((tag) => (tag === from ? to : tag))
+        .filter((tag): tag is string => Boolean(tag));
+      item.tags = [...new Set(next)];
+      await this.archiveItems.save(item);
+    }
+  }
+
+  private async rewriteCategoryPrefix(
+    oldSlug: string,
+    newSlug: string,
+  ): Promise<void> {
+    const prefix = `${oldSlug}:`;
+    const items = await this.archiveItems
+      .createQueryBuilder("item")
+      .where(
+        `EXISTS (
+          SELECT 1 FROM unnest(item.tags) AS t(tag)
+          WHERE t.tag LIKE :prefix
+        )`,
+        { prefix: `${prefix}%` },
+      )
+      .getMany();
+    for (const item of items) {
+      item.tags = item.tags.map((tag) =>
+        tag.startsWith(prefix) ? `${newSlug}:${tag.slice(prefix.length)}` : tag,
+      );
+      await this.archiveItems.save(item);
     }
   }
 

@@ -1,5 +1,6 @@
 import { Type } from "class-transformer";
 import {
+  ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsNumber,
@@ -9,7 +10,9 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from "class-validator";
+import { CreateMediaAssetDto } from "./media-asset.dto";
 
 export class UpdateArchiveItemDto {
   @IsOptional()
@@ -22,6 +25,27 @@ export class UpdateArchiveItemDto {
   @IsString()
   @MaxLength(5000)
   description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200_000)
+  bodyHtml?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(600)
+  summary?: string;
+
+  /**
+   * Replace story media. Same convention as create: extra leading asset is
+   * the optional cover; remaining assets bind to body `<img>` tags in order.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(21)
+  @ValidateNested({ each: true })
+  @Type(() => CreateMediaAssetDto)
+  assets?: CreateMediaAssetDto[];
 
   @IsOptional()
   @IsArray()

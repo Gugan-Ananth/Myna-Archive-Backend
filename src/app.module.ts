@@ -8,6 +8,8 @@ import { validateEnv } from "./config/env.validation";
 import { DatabaseModule } from "./database/database.module";
 import { HealthController } from "./health/health.controller";
 import { MediaModule } from "./media/media.module";
+import { OriginalCharactersModule } from "./original-characters/original-characters.module";
+import { RequestLogsModule } from "./request-logs/request-logs.module";
 import { TagsModule } from "./tags/tags.module";
 import { TaxonomyModule } from "./taxonomy/taxonomy.module";
 
@@ -22,8 +24,10 @@ import { TaxonomyModule } from "./taxonomy/taxonomy.module";
     DatabaseModule,
     MediaModule,
     ArchiveItemsModule,
+    OriginalCharactersModule,
     TagsModule,
     TaxonomyModule,
+    RequestLogsModule,
   ],
   controllers: [AppController, HealthController],
   providers: [AppService],
