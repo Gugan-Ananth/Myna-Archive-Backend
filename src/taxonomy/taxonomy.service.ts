@@ -11,6 +11,7 @@ import { ArchiveItemEntity } from "../archive-items/entities/archive-item.entity
 import { humanizeSlug, slugify } from "../common/slugify";
 import { CreateCategoryDto } from "./dto/create-category.dto";
 import { CreateTaxonomyTagDto } from "./dto/create-taxonomy-tag.dto";
+import { ReorderTaxonomyDto } from "./dto/reorder-taxonomy.dto";
 import { UpdateCategoryDto } from "./dto/update-category.dto";
 import { UpdateTaxonomyTagDto } from "./dto/update-taxonomy-tag.dto";
 import type {
@@ -126,7 +127,7 @@ export class TaxonomyService implements OnModuleInit {
           slug,
           label,
           builtIn: false,
-          sortOrder: 500,
+          sortOrder: await this.nextCategorySortOrder(),
         }),
       );
       category.tags = [];
@@ -249,8 +250,13 @@ export class TaxonomyService implements OnModuleInit {
     }
     tag.label = nextLabel;
     tag.slug = nextSlug;
-    tag.categoryId = dest.id;
-    tag.builtIn = dest.id === source.id ? tag.builtIn : false;
+    if (dest.id !== source.id) {
+      tag.categoryId = dest.id;
+      tag.builtIn = false;
+      tag.sortOrder = await this.nextTagSortOrder(dest.id);
+    } else {
+      tag.categoryId = dest.id;
+    }
     const saved = await this.tags.save(tag);
     const counts = await this.usageCounts();
     return {
@@ -285,7 +291,7 @@ export class TaxonomyService implements OnModuleInit {
             slug: parsed.categorySlug,
             label: humanizeSlug(parsed.categorySlug),
             builtIn: false,
-            sortOrder: 500,
+            sortOrder: await this.nextCategorySortOrder(),
           }),
         );
       }
@@ -300,7 +306,7 @@ export class TaxonomyService implements OnModuleInit {
             slug: parsed.tagSlug,
             label: humanizeSlug(parsed.tagSlug),
             builtIn: false,
-            sortOrder: 500,
+            sortOrder: await this.nextTagSortOrder(category.id),
           }),
         );
       }
@@ -406,7 +412,54 @@ export class TaxonomyService implements OnModuleInit {
         slug,
         label: trimmed || humanizeSlug(slug),
         builtIn: false,
-        sortOrder: 500,
+        sortOrder: await this.nextTagSortOrder(category.id),
+      }),
+    );
+  }
+
+  /**
+   * Rewrite `sortOrder` so GET /taxonomy returns the requested sequence.
+   * Unknown slugs 400; omitted slugs keep relative order at the end.
+   */
+  async reorder(dto: ReorderTaxonomyDto): Promise<TaxonomyCategoryDto[]> {
+    if (!dto.categorySlugs?.length && !dto.tags?.length) {
+      throw new BadRequestException("Provide categorySlugs or tags to reorder");
+    }
+
+    if (dto.categorySlugs?.length) {
+      const existing = await this.categories.find({
+        order: { sortOrder: "ASC", label: "ASC" },
+      });
+      const ordered = applyRequestedOrder(
+        existing,
+        dto.categorySlugs,
+        "category",
+      );
+      await this.categories.save(ordered);
+    }
+
+    for (const group of dto.tags ?? []) {
+      const category = await this.requireCategory(group.categorySlug);
+      const existing = await this.tags.find({
+        where: { categoryId: category.id },
+        order: { sortOrder: "ASC", label: "ASC" },
+      });
+      const ordered = applyRequestedOrder(existing, group.tagSlugs, "tag");
+      await this.tags.save(ordered);
+    }
+
+    return this.list();
+  }
+
+  private async nextCategorySortOrder(): Promise<number> {
+    return nextSortStep(await this.categories.find({ select: ["sortOrder"] }));
+  }
+
+  private async nextTagSortOrder(categoryId: string): Promise<number> {
+    return nextSortStep(
+      await this.tags.find({
+        where: { categoryId },
+        select: ["sortOrder"],
       }),
     );
   }
@@ -473,6 +526,51 @@ export class TaxonomyService implements OnModuleInit {
     }
     return map;
   }
+}
+
+const SORT_STEP = 10;
+
+function nextSortStep(rows: { sortOrder: number }[]): number {
+  const max = rows.reduce(
+    (highest, row) => Math.max(highest, row.sortOrder),
+    0,
+  );
+  return max + SORT_STEP;
+}
+
+function applyRequestedOrder<T extends { slug: string; sortOrder: number }>(
+  existing: T[],
+  requestedSlugs: string[],
+  kind: "category" | "tag",
+): T[] {
+  const bySlug = new Map(existing.map((row) => [row.slug, row]));
+  const seen = new Set<string>();
+  const ordered: T[] = [];
+
+  for (const raw of requestedSlugs) {
+    const slug = slugify(raw);
+    if (!slug) {
+      throw new BadRequestException(`Invalid ${kind} slug`);
+    }
+    const row = bySlug.get(slug);
+    if (!row) {
+      throw new BadRequestException(`Unknown ${kind} “${slug}”`);
+    }
+    if (seen.has(slug)) {
+      throw new BadRequestException(`Duplicate ${kind} “${slug}”`);
+    }
+    seen.add(slug);
+    ordered.push(row);
+  }
+
+  for (const row of existing) {
+    if (!seen.has(row.slug)) ordered.push(row);
+  }
+
+  return ordered.map((row, index) => {
+    row.sortOrder = (index + 1) * SORT_STEP;
+    return row;
+  });
 }
 
 function parseEncodedTag(

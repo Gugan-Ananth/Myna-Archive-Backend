@@ -10,6 +10,7 @@ import {
 } from "@nestjs/common";
 import { CreateCategoryDto } from "./dto/create-category.dto";
 import { CreateTaxonomyTagDto } from "./dto/create-taxonomy-tag.dto";
+import { ReorderTaxonomyDto } from "./dto/reorder-taxonomy.dto";
 import type {
   TaxonomyCategoryResponse,
   TaxonomyListResponse,
@@ -27,6 +28,15 @@ export class TaxonomyController {
   @Get()
   async list(): Promise<TaxonomyListResponse> {
     const data = await this.taxonomy.list();
+    return { data };
+  }
+
+  /** Persist category and/or tag display order. */
+  @Patch("reorder")
+  async reorder(
+    @Body() dto: ReorderTaxonomyDto,
+  ): Promise<TaxonomyListResponse> {
+    const data = await this.taxonomy.reorder(dto);
     return { data };
   }
 
