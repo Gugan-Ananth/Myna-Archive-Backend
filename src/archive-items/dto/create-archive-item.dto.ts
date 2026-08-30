@@ -16,25 +16,27 @@ import {
   ValidateIf,
   ValidateNested,
 } from "class-validator";
-import { CreateMediaAssetDto } from "./media-asset.dto";
+import { MEDIA_TYPES } from "../../common/media-type";
+import { CreateMediaAssetDto, MAX_COMIC_ASSETS } from "./media-asset.dto";
 
 /**
  * Create Archive Item.
  *
- * Prefer `assets` (1–10 images, or 1 video). Legacy single-asset fields
- * (`publicId` / `resourceType` / dims / blurHash) remain supported when
- * `assets` is omitted.
+ * Prefer `assets` (1–25 images, 1–80 comic pages, or 1 video). Legacy
+ * single-asset fields (`publicId` / `resourceType` / dims / blurHash)
+ * remain supported when `assets` is omitted.
  */
 export class CreateArchiveItemDto {
   /**
    * Ordered media assets. When provided:
-   * - image: 1–10, all resourceType image
+   * - image: 1–25, all resourceType image
+   * - comic: 1–80, all resourceType image
    * - video: exactly 1, resourceType video
    */
   @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
-  @ArrayMaxSize(20)
+  @ArrayMaxSize(MAX_COMIC_ASSETS)
   @ValidateNested({ each: true })
   @Type(() => CreateMediaAssetDto)
   assets?: CreateMediaAssetDto[];
@@ -55,8 +57,8 @@ export class CreateArchiveItemDto {
   @IsIn(["image", "video"])
   resourceType?: "image" | "video";
 
-  @IsIn(["image", "video", "story"])
-  mediaType!: "image" | "video" | "story";
+  @IsIn(MEDIA_TYPES)
+  mediaType!: (typeof MEDIA_TYPES)[number];
 
   @IsString()
   @MinLength(1)

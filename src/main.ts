@@ -2,6 +2,7 @@ import { Logger, ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
+import { Express } from "express";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -26,8 +27,8 @@ async function bootstrap() {
     app.enableCors({ origin: corsOrigin });
   }
 
-  // Trust the first reverse proxy so req.ip / X-Forwarded-For is the client.
-  app.getHttpAdapter().getInstance().set("trust proxy", 1);
+  const server = app.getHttpAdapter().getInstance() as Express;
+  server.set("trust proxy", 1);
 
   const port = config.get<number>("port") ?? 3001;
   await app.listen(port);

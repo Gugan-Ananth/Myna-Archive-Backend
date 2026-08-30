@@ -20,7 +20,7 @@ export class ArchiveItemEntity {
   description!: string;
 
   /**
-   * Written story body (HTML). Empty for image/video items.
+   * Written story body (HTML). Empty for image/video/comic items.
    * Inline <img> src values are Bunny CDN URLs bound in document order.
    */
   @Column({ type: "text", default: "" })
@@ -91,7 +91,8 @@ export class ArchiveItemEntity {
   /**
    * Ordered media assets for this item.
    * - Single image / video: length 1
-   * - Image group: 2–10 images (cover is index 0)
+   * - Image group: 2–25 images (cover is index 0)
+   * - Comic: 1–80 pages (cover is index 0)
    * Null on legacy rows — synthesized from cover fields in the response mapper.
    */
   @Column({ type: "jsonb", nullable: true })

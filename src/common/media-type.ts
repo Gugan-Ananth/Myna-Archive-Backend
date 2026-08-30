@@ -1,4 +1,6 @@
-export type MediaType = "image" | "video" | "story";
+export const MEDIA_TYPES = ["image", "video", "story", "comic"] as const;
+
+export type MediaType = (typeof MEDIA_TYPES)[number];
 
 /** Provider-agnostic resource kind stored on Archive Item (`resourceType`). */
 export type MediaResourceType = "image" | "video";
@@ -20,7 +22,7 @@ export const IMAGE_FORMATS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
 export const VIDEO_FORMATS = new Set(["mp4", "webm", "mov", "qt"]);
 
 export function isMediaType(value: string): value is MediaType {
-  return value === "image" || value === "video" || value === "story";
+  return (MEDIA_TYPES as readonly string[]).includes(value);
 }
 
 export function mimeMatchesMediaType(

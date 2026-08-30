@@ -277,8 +277,8 @@ describe("ArchiveItemsService", () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it("rejects image groups with more than 10 assets", async () => {
-      const assets = Array.from({ length: 11 }, (_, i) => ({
+    it("rejects image groups with more than 25 assets", async () => {
+      const assets = Array.from({ length: 26 }, (_, i) => ({
         publicId: `myna-archive/${i}.jpg`,
         resourceType: "image" as const,
       }));
@@ -294,6 +294,69 @@ describe("ArchiveItemsService", () => {
       ).rejects.toBeInstanceOf(BadRequestException);
 
       expect(bunny.verifyAndDeriveUrls).not.toHaveBeenCalled();
+    });
+
+    it("creates a comic with more than 10 pages (cover = first)", async () => {
+      bunny.verifyAndDeriveUrls.mockImplementation(
+        (params: { publicId: string }) =>
+          Promise.resolve(mockImageVerify(params.publicId)),
+      );
+
+      const assets = Array.from({ length: 12 }, (_, i) => ({
+        publicId: `myna-archive/p${i + 1}.jpg`,
+        resourceType: "image" as const,
+        width: 800,
+        height: 1200,
+      }));
+
+      const result = await service.create({
+        mediaType: "comic",
+        name: "Night issue",
+        tags: ["bondage:hogtie"],
+        rating: 9,
+        assets,
+      });
+
+      expect(bunny.verifyAndDeriveUrls).toHaveBeenCalledTimes(12);
+      expect(result.mediaType).toBe("comic");
+      expect(result.mediaAssets).toHaveLength(12);
+      expect(result.mediaAssets[0]?.publicId).toBe("myna-archive/p1.jpg");
+      expect(result.width).toBe(800);
+      expect(result.height).toBe(1200);
+    });
+
+    it("rejects comics with more than 80 pages", async () => {
+      const assets = Array.from({ length: 81 }, (_, i) => ({
+        publicId: `myna-archive/${i}.jpg`,
+        resourceType: "image" as const,
+      }));
+
+      await expect(
+        service.create({
+          mediaType: "comic",
+          name: "too long",
+          tags: ["x"],
+          rating: 1,
+          assets,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(bunny.verifyAndDeriveUrls).not.toHaveBeenCalled();
+    });
+
+    it("rejects mixed video assets on a comic", async () => {
+      await expect(
+        service.create({
+          mediaType: "comic",
+          name: "mixed",
+          tags: ["x"],
+          rating: 1,
+          assets: [
+            { publicId: "myna-archive/a.jpg", resourceType: "image" },
+            { publicId: "vid-guid", resourceType: "video" },
+          ],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it("rejects mixed image/video assets on an image item", async () => {

@@ -7,7 +7,7 @@ export type ArchiveItemResponse = {
   id: string;
   name: string;
   description: string;
-  /** Written story HTML; empty for image/video. */
+  /** Written story HTML; empty for image/video/comic. */
   bodyHtml: string;
   /** Optional short story blurb for homepage cards. */
   summary: string;
@@ -28,7 +28,7 @@ export type ArchiveItemResponse = {
   blurHash: string | null;
   /**
    * Ordered media assets. Length 1 for single image/video;
-   * 2–10 for an image group. Cover is always index 0.
+   * 2–25 for an image group; 1–80 for a comic. Cover is always index 0.
    */
   mediaAssets: MediaAssetResponse[];
 };

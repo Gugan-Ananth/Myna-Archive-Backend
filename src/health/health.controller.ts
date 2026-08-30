@@ -1,7 +1,9 @@
 import { Controller, Get } from "@nestjs/common";
+import { Public } from "../common/public.decorator";
 import { BunnyService } from "../media/bunny.service";
 import { DatabaseHealthService } from "../database/database-health.service";
 
+@Public()
 @Controller("health")
 export class HealthController {
   constructor(

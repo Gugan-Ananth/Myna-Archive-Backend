@@ -104,9 +104,7 @@ export class TaxonomyService implements OnModuleInit {
       slug: cat.slug,
       label: cat.label,
       builtIn: cat.builtIn,
-      tags: (cat.tags ?? []).map((tag) =>
-        this.toTagDto(cat.slug, tag, counts),
-      ),
+      tags: (cat.tags ?? []).map((tag) => this.toTagDto(cat.slug, tag, counts)),
     }));
   }
 
@@ -177,11 +175,11 @@ export class TaxonomyService implements OnModuleInit {
     }
 
     if (nextSlug !== category.slug) {
-      const taken = await this.categories.findOne({ where: { slug: nextSlug } });
+      const taken = await this.categories.findOne({
+        where: { slug: nextSlug },
+      });
       if (taken) {
-        throw new BadRequestException(
-          `Category “${nextSlug}” already exists`,
-        );
+        throw new BadRequestException(`Category “${nextSlug}” already exists`);
       }
       await this.rewriteCategoryPrefix(category.slug, nextSlug);
       category.slug = nextSlug;
@@ -205,7 +203,9 @@ export class TaxonomyService implements OnModuleInit {
     dto: UpdateTaxonomyTagDto,
   ): Promise<{ categorySlug: string; tag: TaxonomyTagDto }> {
     if (!dto.label?.trim() && !dto.categorySlug?.trim()) {
-      throw new BadRequestException("Provide a new label or destination category");
+      throw new BadRequestException(
+        "Provide a new label or destination category",
+      );
     }
 
     const source = await this.requireCategory(categorySlug);
@@ -231,7 +231,10 @@ export class TaxonomyService implements OnModuleInit {
       where: { categoryId: dest.id, slug: nextSlug },
     });
     if (collision && collision.id !== tag.id) {
-      await this.rewriteEncodedTag(fromEncoded, `${dest.slug}:${collision.slug}`);
+      await this.rewriteEncodedTag(
+        fromEncoded,
+        `${dest.slug}:${collision.slug}`,
+      );
       await this.tags.remove(tag);
       const counts = await this.usageCounts();
       return {

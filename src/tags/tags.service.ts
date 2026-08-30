@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { ArchiveItemEntity } from "../archive-items/entities/archive-item.entity";
+import type { MediaType } from "../common/media-type";
 import type { TagSummary } from "./dto/tag-summary.dto";
 
 @Injectable()
@@ -16,7 +17,7 @@ export class TagsService {
    * Ordered by count DESC, then tag ASC (ADR 0008).
    */
   async listSummaries(filter: {
-    mediaType?: "image" | "video" | "story";
+    mediaType?: MediaType;
     imageGroup?: boolean;
   } = {}): Promise<TagSummary[]> {
     const params: string[] = [];

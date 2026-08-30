@@ -1,8 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { AppController } from "./app.controller";
-import { AppService } from "./app.service";
 import { ArchiveItemsModule } from "./archive-items/archive-items.module";
+import { AuthModule } from "./auth/auth.module";
 import configuration from "./config/configuration";
 import { validateEnv } from "./config/env.validation";
 import { DatabaseModule } from "./database/database.module";
@@ -21,6 +20,7 @@ import { TaxonomyModule } from "./taxonomy/taxonomy.module";
       load: [configuration],
       validate: validateEnv,
     }),
+    AuthModule,
     DatabaseModule,
     MediaModule,
     ArchiveItemsModule,
@@ -29,7 +29,6 @@ import { TaxonomyModule } from "./taxonomy/taxonomy.module";
     TaxonomyModule,
     RequestLogsModule,
   ],
-  controllers: [AppController, HealthController],
-  providers: [AppService],
+  controllers: [HealthController],
 })
 export class AppModule {}

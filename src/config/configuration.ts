@@ -53,4 +53,10 @@ export default () => ({
     maxVideoBytes: parseInt(process.env.MAX_VIDEO_BYTES ?? "1073741824", 10),
     chunkBytes: parseInt(process.env.UPLOAD_CHUNK_BYTES ?? "20971520", 10),
   },
+  auth: {
+    /** Single hardcoded owner. No signup, no password-change API. */
+    email: process.env.AUTH_EMAIL,
+    password: process.env.AUTH_PASSWORD,
+    tokenSecret: process.env.AUTH_TOKEN_SECRET,
+  },
 });

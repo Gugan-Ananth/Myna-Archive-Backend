@@ -26,6 +26,7 @@ import { CreateArchiveItemDto } from "./dto/create-archive-item.dto";
 import { ListArchiveItemsQueryDto } from "./dto/list-archive-items-query.dto";
 import {
   CreateMediaAssetDto,
+  MAX_COMIC_ASSETS,
   MAX_IMAGE_ASSETS,
   type MediaAssetResponse,
 } from "./dto/media-asset.dto";
@@ -416,6 +417,22 @@ export class ArchiveItemsService {
         throw new BadRequestException(
           'Video items require resourceType "video"',
         );
+      }
+      return;
+    }
+
+    if (mediaType === "comic") {
+      if (assets.length < 1 || assets.length > MAX_COMIC_ASSETS) {
+        throw new BadRequestException(
+          `Comics must have between 1 and ${MAX_COMIC_ASSETS} pages`,
+        );
+      }
+      for (const asset of assets) {
+        if (asset.resourceType !== "image") {
+          throw new BadRequestException(
+            "Comic pages must be resourceType image",
+          );
+        }
       }
       return;
     }

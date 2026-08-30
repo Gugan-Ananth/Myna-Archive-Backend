@@ -4,7 +4,7 @@ Date: 2026-08-03
 
 ## Status
 
-Accepted
+Superseded by [0011](0011-single-account-session-auth.md)
 
 ## Context
 

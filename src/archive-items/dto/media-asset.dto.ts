@@ -10,8 +10,11 @@ import {
   ValidateIf,
 } from "class-validator";
 
-/** Max images in one image-group Archive Item (ADR 0009). */
-export const MAX_IMAGE_ASSETS = 10;
+/** Max images in one image-group Archive Item. */
+export const MAX_IMAGE_ASSETS = 25;
+
+/** Max pages in one comic Archive Item (ADR 0012). */
+export const MAX_COMIC_ASSETS = 80;
 
 /** One uploaded media file within an Archive Item (cover or slide). */
 export type MediaAssetResponse = {

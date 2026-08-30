@@ -10,7 +10,9 @@ Companion: **Myna-Archive-FrontEnd** (Next.js). This repo is the **API backend**
 |------|------------|-------|
 | **Archive Item** | A single archived media entry (image or video) with metadata (name, description, tags, rating, media type, media URLs). The primary aggregate of the system. | "post", "asset", "media object" (unless talking about binary storage) |
 | **Collection** | The user's full set of archive items (implicit for a single-user product). | "library", "gallery" as domain types |
-| **Media type** | Discriminator on an Archive Item: `image` or `video`. Determines upload validation, Bunny product path (Storage vs Stream), and detail UI (still viewer vs player). | "kind" / "format" as the public field name |
+| **Owner account** | The single hardcoded login (email + password in env). No signup, no password change, no extra users. | "user" as a table / multi-tenant identity |
+| **Access token** | Never-expiring HMAC bearer token issued at login. Stored per device. Valid until `AUTH_TOKEN_SECRET` rotates. | "session cookie" as the API credential (cookie is a frontend concern) |
+| **Media type** | Discriminator on an Archive Item: `image`, `video`, `story`, or `comic`. Determines upload validation, Bunny product path (Storage vs Stream), and detail UI (still viewer vs player vs reader). | "kind" / "format" as the public field name |
 | **Tag** | Encoded `category:tag` string on an item (e.g. `bondage:hogtie`), or legacy freeform without `:`. Normalized on write: trim, strip leading `#`, lowercase, de-dupe. At least one tag required on create. | bare freeform for new content |
 | **Category** | Named group in the taxonomy vocabulary (e.g. Bondage, Artists). Stored in `tag_categories`; seeded built-ins + user-created. | "tag" as synonym for category |
 | **Taxonomy tag** | Selectable value under a category (e.g. hogtie under Bondage). Stored in `taxonomy_tags`. | freeform item tag without category |
@@ -24,14 +26,15 @@ Companion: **Myna-Archive-FrontEnd** (Next.js). This repo is the **API backend**
 | **Display dimensions** | Pixel `width` and `height` of the primary media, stored on the Archive Item for masonry layout without client measurement. Nullable when unknown (legacy rows, video still processing). | "aspect ratio only" as the stored fields (derive ratio from width/height) |
 | **BlurHash** | Compact placeholder string for progressive grid previews (LQIP). Generated client-side at upload; Nest stores and returns it. Nullable when not provided. | "LQIP data URL", "dominant color" as substitutes unless product adds them |
 | **Media asset** | One uploaded binary + derived URLs within an Archive Item (cover or carousel slide). | "attachment", "file" as API type names |
-| **Image group** | An Archive Item with `mediaType: "image"` and **2–10** media assets. Homepage shows the **cover** (first asset) only; detail scrolls the rest. | "album", "gallery" as separate aggregates |
+| **Image group** | An Archive Item with `mediaType: "image"` and **2–25** media assets. Homepage shows the **cover** (first asset) only; detail scrolls the rest. | "album", "gallery" as separate aggregates |
+| **Comic** | An Archive Item with `mediaType: "comic"` and **1–80** ordered page images. Cover is the first page. Own collection section and vertical reader — not an oversized image group. | "album", "image group", "story" as synonyms |
 
 ## Core model (API contract)
 
 Public DTOs (frontend must migrate from the earlier image-only shape — see ADR 0006; display fields ADR 0008; image groups ADR 0009):
 
 ```ts
-type MediaType = "image" | "video";
+type MediaType = "image" | "video" | "story" | "comic";
 
 type MediaAsset = {
   publicId: string;
@@ -55,7 +58,7 @@ type ArchiveItem = {
   width: number | null;
   height: number | null;
   blurHash: string | null;
-  mediaAssets: MediaAsset[]; // 1 for single/video; 2–10 for image group
+  mediaAssets: MediaAsset[]; // 1 for single/video; 2–25 for image group; 1–80 for comic
 };
 
 type TagSummary = {
@@ -85,10 +88,10 @@ Declares `mediaType`, `mimeType`, `byteSize` (must be ≤ limits). Returns Bunny
 
 | Field | Required | Notes |
 |-------|----------|--------|
-| `assets` | preferred | Array of `{ publicId, resourceType, width?, height?, blurHash? }`. Image: 1–10; video: exactly 1 |
+| `assets` | preferred | Array of `{ publicId, resourceType, width?, height?, blurHash? }`. Image: 1–10; comic: 1–80; video: exactly 1 |
 | `publicId` | legacy | Required if `assets` omitted — Storage path or Stream GUID |
 | `resourceType` | legacy | Required if `assets` omitted — `image` \| `video` |
-| `mediaType` | yes | `image` \| `video`; must match assets |
+| `mediaType` | yes | `image` \| `video` \| `story` \| `comic`; must match assets |
 | `name` | yes | Non-empty string |
 | `tags` | yes | ≥1 tag after normalization |
 | `rating` | yes | 0.0–10.0 |
@@ -109,7 +112,7 @@ Mutable: `name`, `description`, `tags`, `rating`.
 - Sort: **rating DESC**, then **name ASC**
 - Multi-tag filter: **AND**
 - Search (`q`): name, description, tags (case-insensitive substring)
-- Optional `mediaType=image|video`
+- Optional `mediaType=image|video|story|comic`
 - Pagination: `page` (default 1), `pageSize` (default 20, max 100)
 
 ### Tags vocabulary
@@ -127,7 +130,8 @@ Mutable: `name`, `description`, `tags`, `rating`.
 | `mediaType` | Grid | Detail |
 |-------------|------|--------|
 | `image` (1 asset) | BlurHash → cover `thumbnailUrl` | still from cover `mediaUrl` |
-| `image` (2–10 group) | Cover only (+ optional “N photos” badge) | carousel over `mediaAssets` |
+| `image` (2–25 group) | Cover only (+ optional “N photos” badge) | carousel over `mediaAssets` |
+| `comic` (1–80 pages) | Cover only (+ page-count badge) | vertical page reader over `mediaAssets` |
 | `video` | BlurHash → `thumbnailUrl` (poster) | progressive `<video src={mediaUrl}>` |
 
 Use cover `width`/`height` when present for masonry cell aspect ratio without measuring the media.
@@ -149,13 +153,15 @@ Use cover `width`/`height` when present for masonry cell aspect ratio without me
 |-------|-----|
 | Postgres + TypeORM | [0001](docs/adr/0001-postgres-persistence.md) |
 | Bunny.net media | [0002](docs/adr/0002-bunny-media.md) |
-| Single-user, no auth v1 | [0003](docs/adr/0003-single-user-no-auth-v1.md) |
+| Single-user, no auth v1 (superseded) | [0003](docs/adr/0003-single-user-no-auth-v1.md) |
+| Single-account never-expiring session | [0011](docs/adr/0011-single-account-session-auth.md) |
 | API prefix `/api/v1` | [0004](docs/adr/0004-api-version-prefix.md) |
 | Tag / list / pagination semantics | [0005](docs/adr/0005-tag-and-list-semantics.md) |
 | Video media kind + progressive stream | [0006](docs/adr/0006-video-media-and-streaming.md) |
 | Large upload (50 MB / 1 GB, direct + finalize) | [0007](docs/adr/0007-large-media-upload.md) |
 | Display metadata + tags endpoint | [0008](docs/adr/0008-display-metadata-and-tags-endpoint.md) |
 | Image groups (multi-image items) | [0009](docs/adr/0009-image-groups.md) |
+| Comics (page sequences) | [0012](docs/adr/0012-comics.md) |
 
 ## Open decisions
 
@@ -163,7 +169,7 @@ Use cover `width`/`height` when present for masonry cell aspect ratio without me
 - Orphan Bunny GC policy if finalize never runs after direct upload.
 - Whether list responses include `createdAt` / `updatedAt` or `durationSeconds` for video (frontend types omit today — prefer omit until UI needs them).
 - Soft-delete vs hard-delete (v1: **hard-delete** DB row + best-effort Bunny destroy).
-- Auth model for any non-local production deploy (deferred; see ADR 0003).
+- Whether a future deploy should rotate the access token on every new-device login (today every valid token stays alive).
 - HLS / adaptive streaming if long-form video becomes common (deferred; ADR 0006).
 - Time-limited image upload tokens (Edge Storage currently returns zone AccessKey for single-user v1).
 - Backfill of `width` / `height` / `blurHash` for pre-0008 items (leave null until needed).
