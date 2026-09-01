@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsNumber,
   IsOptional,
   IsString,
@@ -16,6 +17,10 @@ import { CreateMediaAssetDto } from "./media-asset.dto";
 
 export class UpdateArchiveItemDto {
   @IsOptional()
+  @IsBoolean()
+  starred?: boolean;
+
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(300)
@@ -25,6 +30,12 @@ export class UpdateArchiveItemDto {
   @IsString()
   @MaxLength(5000)
   description?: string;
+
+  /** Optional author name for written stories. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  author?: string;
 
   @IsOptional()
   @IsString()

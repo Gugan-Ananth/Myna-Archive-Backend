@@ -6,6 +6,7 @@ import {
   UpdateDateColumn,
 } from "typeorm";
 import type { MediaType } from "../../common/media-type";
+import type { ArchiveSection } from "../../common/archive-section";
 import type { MediaAssetResponse } from "../dto/media-asset.dto";
 
 @Entity("archive_items")
@@ -18,6 +19,10 @@ export class ArchiveItemEntity {
 
   @Column({ type: "text", default: "" })
   description!: string;
+
+  /** Optional author name for written stories; empty for other media types. */
+  @Column({ type: "varchar", length: 300, default: "" })
+  author!: string;
 
   /**
    * Written story body (HTML). Empty for image/video/comic items.
@@ -39,6 +44,14 @@ export class ArchiveItemEntity {
 
   @Column({ type: "varchar", length: 16 })
   mediaType!: MediaType;
+
+  /** Whether this item is one of the user's category stars. */
+  @Column({ type: "boolean", default: false })
+  starred!: boolean;
+
+  /** Top-level archive section; legacy image rows belong to Images. */
+  @Column({ type: "varchar", length: 32, default: "images" })
+  section!: ArchiveSection;
 
   /**
    * Root story this chapter belongs to. Null when this row is the series

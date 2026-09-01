@@ -8,6 +8,7 @@ export type OriginalCharacterResponse = {
   dislikes: string;
   background: string;
   additionalInfo: string;
+  starred: boolean;
   publicId: string;
   thumbnailUrl: string;
   mediaUrl: string;
@@ -37,6 +38,7 @@ export function toOriginalCharacterResponse(
     dislikes: entity.dislikes ?? "",
     background: entity.background ?? "",
     additionalInfo: entity.additionalInfo ?? "",
+    starred: entity.starred ?? false,
     publicId: entity.publicId,
     thumbnailUrl: entity.thumbnailUrl,
     mediaUrl: entity.mediaUrl,

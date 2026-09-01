@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { ArchiveItemEntity } from "../archive-items/entities/archive-item.entity";
+import type { ArchiveSection } from "../common/archive-section";
 import type { MediaType } from "../common/media-type";
 import type { TagSummary } from "./dto/tag-summary.dto";
 
@@ -19,6 +20,7 @@ export class TagsService {
   async listSummaries(filter: {
     mediaType?: MediaType;
     imageGroup?: boolean;
+    section?: ArchiveSection;
   } = {}): Promise<TagSummary[]> {
     const params: string[] = [];
     const where: string[] = [];
@@ -26,6 +28,11 @@ export class TagsService {
     if (filter.mediaType) {
       params.push(filter.mediaType);
       where.push(`item."mediaType" = $${params.length}`);
+    }
+
+    if (filter.section) {
+      params.push(filter.section);
+      where.push('item."section" = $' + params.length);
     }
 
     if (filter.imageGroup === true) {

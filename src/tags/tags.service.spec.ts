@@ -64,6 +64,20 @@ describe("TagsService", () => {
     expect(params).toEqual(["image"]);
   });
 
+  it("scopes the vocabulary to the Cute Things section", async () => {
+    repository.query.mockResolvedValue([]);
+
+    await service.listSummaries({
+      mediaType: "image",
+      section: "cute-things",
+      imageGroup: false,
+    });
+
+    const [sql, params] = repository.query.mock.calls[0] as [string, string[]];
+    expect(sql).toContain('item."section" = $2');
+    expect(params).toEqual(["image", "cute-things"]);
+  });
+
   it("returns empty list when there are no tags", async () => {
     repository.query.mockResolvedValue([]);
     await expect(service.listSummaries()).resolves.toEqual([]);

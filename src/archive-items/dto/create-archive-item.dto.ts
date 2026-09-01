@@ -17,6 +17,10 @@ import {
   ValidateNested,
 } from "class-validator";
 import { MEDIA_TYPES } from "../../common/media-type";
+import {
+  ARCHIVE_SECTIONS,
+  type ArchiveSection,
+} from "../../common/archive-section";
 import { CreateMediaAssetDto, MAX_COMIC_ASSETS } from "./media-asset.dto";
 
 /**
@@ -60,6 +64,10 @@ export class CreateArchiveItemDto {
   @IsIn(MEDIA_TYPES)
   mediaType!: (typeof MEDIA_TYPES)[number];
 
+  @IsOptional()
+  @IsIn(ARCHIVE_SECTIONS)
+  section?: ArchiveSection;
+
   @IsString()
   @MinLength(1)
   @MaxLength(300)
@@ -80,6 +88,12 @@ export class CreateArchiveItemDto {
   @IsString()
   @MaxLength(5000)
   description?: string;
+
+  /** Optional author name for written stories. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  author?: string;
 
   /** Written story HTML. Inline images are rewritten to CDN URLs on save. */
   @IsOptional()

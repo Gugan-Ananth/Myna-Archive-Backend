@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
+import { MAX_STARS_PER_CATEGORY } from "../common/star-category";
 import { BunnyService } from "../media/bunny.service";
 import { CreateOriginalCharacterDto } from "./dto/create-original-character.dto";
 import { ListOriginalCharactersQueryDto } from "./dto/list-original-characters-query.dto";
@@ -66,6 +67,10 @@ export class OriginalCharactersService {
       );
     }
 
+    if (query.starred !== undefined) {
+      qb.andWhere("oc.starred = :starred", { starred: query.starred });
+    }
+
     qb.orderBy("oc.createdAt", "DESC").addOrderBy("oc.name", "ASC");
     const total = await qb.getCount();
     // Board payload: skip long profile text; search still uses those columns.
@@ -80,6 +85,7 @@ export class OriginalCharactersService {
         "oc.width",
         "oc.height",
         "oc.blurHash",
+        "oc.starred",
         "oc.createdAt",
       ])
       .skip((page - 1) * pageSize)
@@ -106,6 +112,21 @@ export class OriginalCharactersService {
     dto: UpdateOriginalCharacterDto,
   ): Promise<OriginalCharacterResponse> {
     const entity = await this.findEntityOrFail(id);
+
+    if (dto.starred === true && !entity.starred) {
+      const count = await this.ocs
+        .createQueryBuilder("oc")
+        .where("oc.starred = :starred", { starred: true })
+        .getCount();
+      if (count >= MAX_STARS_PER_CATEGORY) {
+        throw new BadRequestException(
+          `You can star a maximum of ${MAX_STARS_PER_CATEGORY} items in the oc category`,
+        );
+      }
+    }
+    if (dto.starred !== undefined) {
+      entity.starred = dto.starred;
+    }
 
     if (dto.name !== undefined) {
       const name = dto.name.trim();

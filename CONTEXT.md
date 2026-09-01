@@ -8,7 +8,8 @@ Companion: **Myna-Archive-FrontEnd** (Next.js). This repo is the **API backend**
 
 | Term | Definition | Avoid |
 |------|------------|-------|
-| **Archive Item** | A single archived media entry (image or video) with metadata (name, description, tags, rating, media type, media URLs). The primary aggregate of the system. | "post", "asset", "media object" (unless talking about binary storage) |
+| **Archive Item** | A single archived media entry (image or video) with metadata (name, description, optional story author, tags, rating, media type, media URLs). The primary aggregate of the system. | "post", "asset", "media object" (unless talking about binary storage) |
+| **Archive section** | Top-level home grouping for an Archive Item. Image posts use images or cute-things; existing image posts default to images. | storing section membership only in the frontend |
 | **Collection** | The user's full set of archive items (implicit for a single-user product). | "library", "gallery" as domain types |
 | **Owner account** | The single hardcoded login (email + password in env). No signup, no password change, no extra users. | "user" as a table / multi-tenant identity |
 | **Access token** | Never-expiring HMAC bearer token issued at login. Stored per device. Valid until `AUTH_TOKEN_SECRET` rotates. | "session cookie" as the API credential (cookie is a frontend concern) |
@@ -16,7 +17,9 @@ Companion: **Myna-Archive-FrontEnd** (Next.js). This repo is the **API backend**
 | **Tag** | Encoded `category:tag` string on an item (e.g. `bondage:hogtie`), or legacy freeform without `:`. Normalized on write: trim, strip leading `#`, lowercase, de-dupe. At least one tag required on create. | bare freeform for new content |
 | **Category** | Named group in the taxonomy vocabulary (e.g. Bondage, Artists). Stored in `tag_categories`; seeded built-ins + user-created. | "tag" as synonym for category |
 | **Taxonomy tag** | Selectable value under a category (e.g. hogtie under Bondage). Stored in `taxonomy_tags`. | freeform item tag without category |
-| **Rating** | Decimal score **0.0–10.0** inclusive. Higher ranks first on the home grid. Required on create. | "stars" (UI may show stars; domain field is rating) |
+| **Rating** | Decimal score **0.0–10.0** inclusive. Higher ranks first on the home grid. Required on create. | confusing with a category star |
+| **Category star** | A saved favorite marker on an Archive Item or Original Character. Each dashboard category allows at most **10** starred entries; the Images, Cute Things, Collections, Comics, Videos, Stories, and Original Characters categories are independent. | using rating as the star state |
+| **Top 10 board** | A dashboard view of the starred entries in every category. Each category contributes up to 10 entries, ordered by rating from highest to lowest. | treating Top 10 as one shared ten-item pool |
 | **Thumbnail** | Low-res still used for grid/list display (`thumbnailUrl`). For images: Bunny Optimizer query on CDN URL. For videos: Stream **poster** (`thumbnail.jpg`). | confusing with full media |
 | **Media URL** | Primary playback/view URL (`mediaUrl`): full-resolution image **or** progressive video stream URL (Bunny CDN / Stream). | `imageUrl` (superseded; do not use in new code) |
 | **Image** | Archive Item with `mediaType: "image"`. Detail view shows still. | confusing with thumbnail |
@@ -50,9 +53,12 @@ type ArchiveItem = {
   id: string;
   name: string;
   description: string;
+  author: string;        // story author; empty for other media types
   tags: string[];       // encoded category:tag (or legacy freeform), normalized
   rating: number;       // 0.0–10.0
   mediaType: MediaType;
+  starred: boolean;     // category favorite; at most 10 per dashboard category
+  section: "images" | "cute-things";
   thumbnailUrl: string; // cover (first asset) — grid
   mediaUrl: string;     // cover full image OR progressive video URL
   width: number | null;
@@ -89,6 +95,7 @@ Declares `mediaType`, `mimeType`, `byteSize` (must be ≤ limits). Returns Bunny
 | Field | Required | Notes |
 |-------|----------|--------|
 | `assets` | preferred | Array of `{ publicId, resourceType, width?, height?, blurHash? }`. Image: 1–10; comic: 1–80; video: exactly 1 |
+| `section` | no | `images` by default; `cute-things` accepts exactly one image |
 | `publicId` | legacy | Required if `assets` omitted — Storage path or Stream GUID |
 | `resourceType` | legacy | Required if `assets` omitted — `image` \| `video` |
 | `mediaType` | yes | `image` \| `video` \| `story` \| `comic`; must match assets |
@@ -96,6 +103,7 @@ Declares `mediaType`, `mimeType`, `byteSize` (must be ≤ limits). Returns Bunny
 | `tags` | yes | ≥1 tag after normalization |
 | `rating` | yes | 0.0–10.0 |
 | `description` | no | Defaults to `""` |
+| `author` | no | Author name for written stories; defaults to `""` |
 | `width` / `height` / `blurHash` | no | Legacy cover-only; prefer per-asset fields inside `assets` |
 
 Nest verifies **each** asset, derives URLs, stores ordered `mediaAssets`, and denormalizes **cover = assets[0]** onto top-level URL/dim fields. For **video**, Nest also copies Stream `width`/`height` when available. Display metadata and assets are **immutable after create** (not on `PATCH`).
@@ -104,7 +112,10 @@ Nest verifies **each** asset, derives URLs, stores ordered `mediaAssets`, and de
 
 ### Update (JSON)
 
-Mutable: `name`, `description`, `tags`, `rating`.  
+Mutable: `name`, `description`, `author` (stories), `tags`, `rating`, `starred`.
+Setting `starred` to `true` fails once the item's dashboard category already has
+10 starred entries. Unstarring is always allowed. Use `starred=true|false` on
+list endpoints to filter saved favorites.
 **Not** mutable: `width`, `height`, `blurHash`, media URLs / binary (media replace out of scope for v1).
 
 ### List defaults
@@ -123,7 +134,8 @@ Mutable: `name`, `description`, `tags`, `rating`.
 - `POST /api/v1/taxonomy/categories/:categorySlug/tags` → body `{ label }` add tag (Others)
 - Seed built-ins on boot: **Bondage**, **Artists**
 - Create/update item auto-registers any new `category:tag` pairs into taxonomy
-- SQL migration: `migrations/001_taxonomy.sql` (or `DB_SYNC=true`)
+- SQL migrations: apply the files in `migrations/` in filename order (or use
+  `DB_SYNC=true`); `migrations/007_stars.sql` adds persisted category stars.
 
 ### Playback / display
 

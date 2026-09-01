@@ -1,5 +1,6 @@
 import { Type } from "class-transformer";
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -11,6 +12,10 @@ import {
 } from "class-validator";
 
 export class UpdateOriginalCharacterDto {
+  @IsOptional()
+  @IsBoolean()
+  starred?: boolean;
+
   @IsOptional()
   @IsString()
   @MinLength(1)

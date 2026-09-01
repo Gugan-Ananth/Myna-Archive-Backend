@@ -32,6 +32,24 @@ describe("ListArchiveItemsQueryDto", () => {
     expect(dto.imageGroup).toBe(true);
   });
 
+  it("parses the Cute Things section", () => {
+    const dto = plainToInstance(
+      ListArchiveItemsQueryDto,
+      { mediaType: "image", section: "cute-things" },
+      implicit,
+    );
+    expect(dto.section).toBe("cute-things");
+  });
+
+  it("parses starred=true", () => {
+    const dto = plainToInstance(
+      ListArchiveItemsQueryDto,
+      { mediaType: "image", starred: "true" },
+      implicit,
+    );
+    expect(dto.starred).toBe(true);
+  });
+
   it("leaves imageGroup unset when omitted", () => {
     const dto = plainToInstance(
       ListArchiveItemsQueryDto,

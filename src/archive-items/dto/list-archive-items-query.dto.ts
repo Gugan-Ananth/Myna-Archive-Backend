@@ -10,6 +10,10 @@ import {
   Min,
 } from "class-validator";
 import { MEDIA_TYPES } from "../../common/media-type";
+import {
+  ARCHIVE_SECTIONS,
+  type ArchiveSection,
+} from "../../common/archive-section";
 import { transformQueryBoolean } from "../../common/query-boolean";
 
 function toScalarString(value: unknown): string {
@@ -46,6 +50,15 @@ export class ListArchiveItemsQueryDto {
   @IsOptional()
   @IsIn(MEDIA_TYPES)
   mediaType?: (typeof MEDIA_TYPES)[number];
+
+  @IsOptional()
+  @IsIn(ARCHIVE_SECTIONS)
+  section?: ArchiveSection;
+
+  @IsOptional()
+  @Transform(transformQueryBoolean)
+  @IsBoolean()
+  starred?: boolean;
 
   /**
    * When set with mediaType=image:

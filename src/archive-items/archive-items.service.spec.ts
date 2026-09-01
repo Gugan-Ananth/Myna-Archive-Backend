@@ -168,6 +168,47 @@ describe("ArchiveItemsService", () => {
       ]);
     });
 
+    it("creates a Cute Things item as a separate single-image section", async () => {
+      bunny.verifyAndDeriveUrls.mockResolvedValue(
+        mockImageVerify("myna-archive/cute.jpg"),
+      );
+
+      const result = await service.create({
+        mediaType: "image",
+        section: "cute-things",
+        name: "Cute cat",
+        tags: ["animals"],
+        rating: 9,
+        assets: [
+          { publicId: "myna-archive/cute.jpg", resourceType: "image" },
+        ],
+      });
+
+      expect(result.section).toBe("cute-things");
+      expect(result.mediaAssets).toHaveLength(1);
+      expect(repository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ section: "cute-things" }),
+      );
+    });
+
+    it("rejects Cute Things items with multiple images", async () => {
+      await expect(
+        service.create({
+          mediaType: "image",
+          section: "cute-things",
+          name: "Too much cute",
+          tags: ["animals"],
+          rating: 9,
+          assets: [
+            { publicId: "myna-archive/cute-1.jpg", resourceType: "image" },
+            { publicId: "myna-archive/cute-2.jpg", resourceType: "image" },
+          ],
+        }),
+      ).rejects.toThrow("Cute-things items must have exactly one image");
+
+      expect(bunny.verifyAndDeriveUrls).not.toHaveBeenCalled();
+    });
+
     it("creates a written story and binds inline images in document order", async () => {
       bunny.verifyAndDeriveUrls.mockImplementation(
         (params: { publicId: string }) =>
@@ -177,6 +218,7 @@ describe("ArchiveItemsService", () => {
       const result = await service.create({
         mediaType: "story",
         name: "Night letter",
+        author: "  Ada Lovelace  ",
         tags: ["bondage:hogtie"],
         rating: 8,
         bodyHtml:
@@ -188,6 +230,7 @@ describe("ArchiveItemsService", () => {
       });
 
       expect(result.mediaType).toBe("story");
+      expect(result.author).toBe("Ada Lovelace");
       expect(result.mediaAssets).toHaveLength(2);
       expect(result.bodyHtml).toContain("<p>before</p>");
       expect(result.bodyHtml).toContain("<p>mid</p>");
@@ -506,6 +549,115 @@ describe("ArchiveItemsService", () => {
       );
       expect(result.mediaAssets).toHaveLength(1);
       expect(result.mediaAssets[0]?.publicId).toBe("myna-archive/old.jpg");
+    });
+  });
+
+  describe("update", () => {
+    it("updates the author of a story", async () => {
+      const entity = {
+        id: "11111111-1111-1111-1111-111111111111",
+        publicId: "",
+        resourceType: "image",
+        name: "Story",
+        description: "",
+        author: "Old Author",
+        bodyHtml: "<p>hello</p>",
+        summary: "",
+        tags: ["x"],
+        rating: 5,
+        mediaType: "story",
+        seriesId: null,
+        chapterNumber: 1,
+        thumbnailUrl: "",
+        mediaUrl: "",
+        width: null,
+        height: null,
+        blurHash: null,
+        mediaAssets: [],
+      } as ArchiveItemEntity;
+      repository.findOne.mockResolvedValue(entity);
+
+      const result = await service.update(entity.id, {
+        author: "  New Author  ",
+      });
+
+      expect(result.author).toBe("New Author");
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ author: "New Author" }),
+      );
+    });
+
+    it("stars an image when its category has room", async () => {
+      const entity = {
+        id: "11111111-1111-1111-1111-111111111111",
+        publicId: "myna-archive/star.jpg",
+        resourceType: "image",
+        name: "Starred image",
+        description: "",
+        author: "",
+        bodyHtml: "",
+        summary: "",
+        tags: ["x"],
+        rating: 5,
+        mediaType: "image",
+        starred: false,
+        section: "images",
+        seriesId: null,
+        chapterNumber: 1,
+        thumbnailUrl: "thumb",
+        mediaUrl: "media",
+        width: 100,
+        height: 100,
+        blurHash: null,
+        mediaAssets: [],
+      } as ArchiveItemEntity;
+      repository.findOne.mockResolvedValue(entity);
+
+      const result = await service.update(entity.id, { starred: true });
+
+      expect(result.starred).toBe(true);
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ starred: true }),
+      );
+    });
+
+    it("rejects a star when the category already has ten items", async () => {
+      const entity = {
+        id: "11111111-1111-1111-1111-111111111111",
+        publicId: "myna-archive/star.jpg",
+        resourceType: "image",
+        name: "Starred image",
+        description: "",
+        author: "",
+        bodyHtml: "",
+        summary: "",
+        tags: ["x"],
+        rating: 5,
+        mediaType: "image",
+        starred: false,
+        section: "images",
+        seriesId: null,
+        chapterNumber: 1,
+        thumbnailUrl: "thumb",
+        mediaUrl: "media",
+        width: 100,
+        height: 100,
+        blurHash: null,
+        mediaAssets: [],
+      } as ArchiveItemEntity;
+      repository.findOne.mockResolvedValue(entity);
+
+      const qb: Record<string, jest.Mock> = {};
+      const chain = () => qb;
+      qb.where = jest.fn(chain);
+      qb.andWhere = jest.fn(chain);
+      qb.getCount = jest.fn(() => Promise.resolve(10));
+      repository.createQueryBuilder.mockReturnValueOnce(qb);
+
+      await expect(service.update(entity.id, { starred: true })).rejects.toThrow(
+        "You can star a maximum of 10 items in the images category",
+      );
+      expect(repository.save).not.toHaveBeenCalled();
     });
   });
 

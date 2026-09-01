@@ -1,9 +1,21 @@
 # Archive API rules
 
+- The public item response includes a section field; Cute Things is a separate
+  single-image section from Images.
+
 - Primary resource: **Archive Item** (`CONTEXT.md`).
 - Public fields stay aligned with frontend unless an ADR documents a break:
-  `id`, `name`, `description`, `tags`, `rating` (0.0–10.0), `mediaType`,
+  Archive items may be scoped to the Images or Cute Things archive section;
+  Cute Things accepts exactly one image asset per item.
+  `id`, `name`, `description`, `author` (stories), `tags`, `rating` (0.0–10.0), `mediaType`,
+  `starred` (at most 10 per dashboard category),
   `thumbnailUrl`, `mediaUrl`, `width`, `height`, `blurHash`, `mediaAssets[]`.
+- Category stars are independent for Images, Cute Things, Collections, Comics,
+  Videos, Stories, and Original Characters. `PATCH` may set `starred`; setting
+  it to true beyond the category limit returns a validation error. List endpoints
+  accept `starred=true|false`.
+- The frontend Top 10 board composes one `starred=true&pageSize=10` list per
+  category; archive lists use the default rating-descending sort.
 - **Image groups** (ADR 0009): `mediaType: image` with **2–10** assets; cover is index 0
   (denormalized onto top-level URL/dim fields). Video is always **exactly one** asset.
 - Create prefers `assets[]` (per-file `publicId` + `resourceType` + optional dims/blurHash).

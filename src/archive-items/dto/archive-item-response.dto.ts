@@ -1,4 +1,5 @@
 import type { MediaType } from "../../common/media-type";
+import type { ArchiveSection } from "../../common/archive-section";
 import type { ArchiveItemEntity } from "../entities/archive-item.entity";
 import type { MediaAssetResponse } from "./media-asset.dto";
 
@@ -7,6 +8,8 @@ export type ArchiveItemResponse = {
   id: string;
   name: string;
   description: string;
+  /** Optional author name for written stories. */
+  author: string;
   /** Written story HTML; empty for image/video/comic. */
   bodyHtml: string;
   /** Optional short story blurb for homepage cards. */
@@ -14,6 +17,8 @@ export type ArchiveItemResponse = {
   tags: string[];
   rating: number;
   mediaType: MediaType;
+  starred: boolean;
+  section: ArchiveSection;
   /** Root story id when this row is a later chapter; null for the series root. */
   seriesId: string | null;
   /** 1-based chapter index. Roots are chapter 1. */
@@ -79,11 +84,14 @@ export function toArchiveItemResponse(
     id: entity.id,
     name: entity.name,
     description: entity.description,
+    author: entity.author ?? "",
     bodyHtml: entity.bodyHtml ?? "",
     summary: entity.summary ?? "",
     tags: entity.tags,
     rating: entity.rating,
     mediaType: entity.mediaType,
+    starred: entity.starred ?? false,
+    section: entity.section ?? "images",
     seriesId: entity.seriesId ?? null,
     chapterNumber: entity.chapterNumber ?? 1,
     chapterCount: extras?.chapterCount ?? 1,

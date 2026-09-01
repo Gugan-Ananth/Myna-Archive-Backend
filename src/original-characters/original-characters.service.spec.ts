@@ -178,6 +178,72 @@ describe("OriginalCharactersService", () => {
     expect(result.publicId).toBe("oc/new.jpg");
   });
 
+  it("stars an OC when its category has room", async () => {
+    const entity = {
+      id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      name: "Mira",
+      age: "19",
+      likes: "",
+      dislikes: "",
+      background: "",
+      additionalInfo: "",
+      publicId: "oc/portrait.jpg",
+      resourceType: "image",
+      starred: false,
+      mediaUrl: "https://cdn.example/portrait.jpg",
+      thumbnailUrl: "https://cdn.example/portrait.jpg",
+      width: 100,
+      height: 100,
+      blurHash: null,
+    } as OriginalCharacterEntity;
+    repository.findOne.mockResolvedValue(entity);
+
+    const qb: Record<string, jest.Mock> = {};
+    const chain = () => qb;
+    qb.where = jest.fn(chain);
+    qb.getCount = jest.fn(() => Promise.resolve(0));
+    repository.createQueryBuilder.mockReturnValueOnce(qb);
+
+    const result = await service.update(entity.id, { starred: true });
+
+    expect(result.starred).toBe(true);
+    expect(repository.save).toHaveBeenCalledWith(
+      expect.objectContaining({ starred: true }),
+    );
+  });
+
+  it("rejects an OC star when the category already has ten items", async () => {
+    const entity = {
+      id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      name: "Mira",
+      age: "19",
+      likes: "",
+      dislikes: "",
+      background: "",
+      additionalInfo: "",
+      publicId: "oc/portrait.jpg",
+      resourceType: "image",
+      starred: false,
+      mediaUrl: "https://cdn.example/portrait.jpg",
+      thumbnailUrl: "https://cdn.example/portrait.jpg",
+      width: 100,
+      height: 100,
+      blurHash: null,
+    } as OriginalCharacterEntity;
+    repository.findOne.mockResolvedValue(entity);
+
+    const qb: Record<string, jest.Mock> = {};
+    const chain = () => qb;
+    qb.where = jest.fn(chain);
+    qb.getCount = jest.fn(() => Promise.resolve(10));
+    repository.createQueryBuilder.mockReturnValueOnce(qb);
+
+    await expect(service.update(entity.id, { starred: true })).rejects.toThrow(
+      "You can star a maximum of 10 items in the oc category",
+    );
+    expect(repository.save).not.toHaveBeenCalled();
+  });
+
   it("deletes the portrait when removing an OC", async () => {
     repository.findOne.mockResolvedValue({
       id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",

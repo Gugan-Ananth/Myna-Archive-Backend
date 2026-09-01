@@ -36,6 +36,10 @@ export class OriginalCharacterEntity {
   @Column({ type: "varchar", length: 16, default: "image" })
   resourceType!: string;
 
+  /** Whether this OC is one of the ten category stars. */
+  @Column({ type: "boolean", default: false })
+  starred!: boolean;
+
   @Column({ type: "text" })
   mediaUrl!: string;
 

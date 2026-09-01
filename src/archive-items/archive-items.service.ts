@@ -7,6 +7,11 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { normalizeTags } from "../common/normalize-tags";
+import type { ArchiveSection } from "../common/archive-section";
+import {
+  MAX_STARS_PER_CATEGORY,
+  type StarCategory,
+} from "../common/star-category";
 import {
   applyStoryAssets,
   MAX_STORY_ASSETS,
@@ -55,7 +60,13 @@ export class ArchiveItemsService {
     await this.taxonomy.ensureEncodedTags(tags);
 
     const assetInputs = this.normalizeAssetInputs(dto);
-    this.assertAssetRules(dto.mediaType, assetInputs);
+    const section: ArchiveSection = dto.section ?? "images";
+    if (dto.mediaType !== "image" && section !== "images") {
+      throw new BadRequestException(
+        "Only image items can be stored in the cute-things section",
+      );
+    }
+    this.assertAssetRules(dto.mediaType, assetInputs, section);
 
     const verifyType: "image" | "video" =
       dto.mediaType === "video" ? "video" : "image";
@@ -85,11 +96,13 @@ export class ArchiveItemsService {
     const entity = this.archiveItems.create({
       name: dto.name.trim(),
       description: dto.description?.trim() ?? "",
+      author: dto.mediaType === "story" ? (dto.author?.trim() ?? "") : "",
       bodyHtml,
       summary: dto.summary?.trim() ?? "",
       tags,
       rating: dto.rating,
       mediaType: dto.mediaType,
+      section,
       seriesId: series.seriesId,
       chapterNumber: series.chapterNumber,
       thumbnailUrl: cover?.thumbnailUrl ?? "",
@@ -121,6 +134,18 @@ export class ArchiveItemsService {
     if (query.mediaType) {
       qb.andWhere("item.mediaType = :mediaType", {
         mediaType: query.mediaType,
+      });
+    }
+
+    if (query.section) {
+      qb.andWhere("item.section = :section", {
+        section: query.section,
+      });
+    }
+
+    if (query.starred !== undefined) {
+      qb.andWhere("item.starred = :starred", {
+        starred: query.starred,
       });
     }
 
@@ -222,11 +247,21 @@ export class ArchiveItemsService {
   ): Promise<ArchiveItemResponse> {
     const entity = await this.findEntityOrFail(id);
 
+    if (dto.starred === true && !entity.starred) {
+      await this.assertStarAvailable(entity);
+    }
+    if (dto.starred !== undefined) {
+      entity.starred = dto.starred;
+    }
+
     if (dto.name !== undefined) {
       entity.name = dto.name.trim();
     }
     if (dto.description !== undefined) {
       entity.description = dto.description.trim();
+    }
+    if (entity.mediaType === "story" && dto.author !== undefined) {
+      entity.author = dto.author.trim();
     }
     if (dto.summary !== undefined) {
       entity.summary = dto.summary.trim();
@@ -342,6 +377,9 @@ export class ArchiveItemsService {
       if (!promoted.summary?.trim() && entity.summary) {
         promoted.summary = entity.summary;
       }
+      if (!promoted.author?.trim() && entity.author) {
+        promoted.author = entity.author;
+      }
       await this.archiveItems.save(promoted);
       for (const child of rest) {
         child.seriesId = promoted.id;
@@ -385,11 +423,18 @@ export class ArchiveItemsService {
   private assertAssetRules(
     mediaType: MediaType,
     assets: CreateMediaAssetDto[],
+    section: ArchiveSection = "images",
   ): void {
     const publicIds = assets.map((a) => a.publicId.trim());
     if (new Set(publicIds).size !== publicIds.length) {
       throw new BadRequestException(
         "Each media asset must have a unique publicId",
+      );
+    }
+
+    if (section === "cute-things" && assets.length !== 1) {
+      throw new BadRequestException(
+        "Cute-things items must have exactly one image",
       );
     }
 
@@ -450,6 +495,56 @@ export class ArchiveItemsService {
         );
       }
     }
+  }
+
+  private async assertStarAvailable(
+    entity: ArchiveItemEntity,
+  ): Promise<void> {
+    const category = this.starCategoryFor(entity);
+    const qb = this.archiveItems.createQueryBuilder("item");
+    qb.where("item.starred = :starred", { starred: true });
+
+    if (category === "images") {
+      qb.andWhere(
+        `item.mediaType = 'image' AND item.section = 'images' AND (item.mediaAssets IS NULL OR jsonb_typeof(item.mediaAssets) <> 'array' OR jsonb_array_length(item.mediaAssets) <= 1)`,
+      );
+    } else if (category === "cute-things") {
+      qb.andWhere(
+        `item.mediaType = 'image' AND item.section = 'cute-things'`,
+      );
+    } else if (category === "collections") {
+      qb.andWhere(
+        `item.mediaType = 'image' AND item.mediaAssets IS NOT NULL AND jsonb_typeof(item.mediaAssets) = 'array' AND jsonb_array_length(item.mediaAssets) >= 2`,
+      );
+    } else {
+      qb.andWhere("item.mediaType = :starMediaType", {
+        starMediaType:
+          category === "comics"
+            ? "comic"
+            : category === "stories"
+              ? "story"
+              : category,
+      });
+    }
+
+    const count = await qb.getCount();
+    if (count >= MAX_STARS_PER_CATEGORY) {
+      throw new BadRequestException(
+        `You can star a maximum of ${MAX_STARS_PER_CATEGORY} items in the ${category} category`,
+      );
+    }
+  }
+
+  private starCategoryFor(entity: ArchiveItemEntity): StarCategory {
+    if (entity.mediaType === "image") {
+      if (entity.section === "cute-things") return "cute-things";
+      return resolveMediaAssets(entity).length > 1
+        ? "collections"
+        : "images";
+    }
+    if (entity.mediaType === "comic") return "comics";
+    if (entity.mediaType === "video") return "videos";
+    return "stories";
   }
 
   private async verifyAsset(
