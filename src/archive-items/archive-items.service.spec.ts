@@ -37,6 +37,9 @@ describe("ArchiveItemsService", () => {
       qb.getCount = jest.fn(() => Promise.resolve(0));
       qb.getMany = jest.fn(() => Promise.resolve([]));
       qb.getRawMany = jest.fn(() => Promise.resolve([]));
+      qb.getRawAndEntities = jest.fn(() =>
+        Promise.resolve({ entities: [], raw: [] }),
+      );
       return qb;
     }),
   };
@@ -60,7 +63,7 @@ describe("ArchiveItemsService", () => {
       },
       urls: {
         mediaUrl: `https://cdn.example.b-cdn.net/${publicId}`,
-        thumbnailUrl: `https://cdn.example.b-cdn.net/${publicId}?width=480&height=270`,
+        thumbnailUrl: `https://cdn.example.b-cdn.net/${publicId}?width=480&quality=68&format=webp`,
       },
     };
   }
@@ -549,6 +552,62 @@ describe("ArchiveItemsService", () => {
       );
       expect(result.mediaAssets).toHaveLength(1);
       expect(result.mediaAssets[0]?.publicId).toBe("myna-archive/old.jpg");
+    });
+  });
+
+  describe("findAll", () => {
+    it("uses the indexed asset count and reads the total in the page query", async () => {
+      const qb = repository.createQueryBuilder();
+      qb.getRawAndEntities.mockResolvedValue({
+        entities: [
+          {
+            id: "11111111-1111-1111-1111-111111111111",
+            name: "Single image",
+            description: "",
+            author: "",
+            summary: "",
+            tags: ["images"],
+            rating: 8,
+            mediaType: "image",
+            starred: false,
+            section: "images",
+            seriesId: null,
+            chapterNumber: 1,
+            thumbnailUrl: "thumb",
+            mediaUrl: "media",
+            width: 100,
+            height: 100,
+            blurHash: null,
+            publicId: "myna-archive/single.jpg",
+            resourceType: "image",
+            mediaAssets: null,
+          } as ArchiveItemEntity,
+        ],
+        raw: [{ total_count: "41" }],
+      });
+      repository.createQueryBuilder.mockReturnValueOnce(qb);
+
+      const result = await service.findAll({
+        mediaType: "image",
+        section: "images",
+        imageGroup: false,
+        page: 1,
+        pageSize: 40,
+      });
+
+      expect(qb.andWhere).toHaveBeenCalledWith("item.mediaAssetCount <= 1");
+      expect(qb.addSelect).toHaveBeenCalledWith(
+        "COUNT(*) OVER()",
+        "total_count",
+      );
+      expect(qb.getCount).not.toHaveBeenCalled();
+      expect(result.data).toHaveLength(1);
+      expect(result.meta).toEqual({
+        page: 1,
+        pageSize: 40,
+        total: 41,
+        totalPages: 2,
+      });
     });
   });
 

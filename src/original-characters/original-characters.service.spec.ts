@@ -100,28 +100,32 @@ describe("OriginalCharactersService", () => {
     qb.orderBy = jest.fn(chain);
     qb.addOrderBy = jest.fn(chain);
     qb.select = jest.fn(chain);
+    qb.addSelect = jest.fn(chain);
     qb.skip = jest.fn(chain);
     qb.take = jest.fn(chain);
     qb.getCount = jest.fn(() => Promise.resolve(1));
-    qb.getMany = jest.fn(() =>
-      Promise.resolve([
-        {
-          id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-          name: "Mira",
-          age: "19",
-          likes: "",
-          dislikes: "",
-          background: "Grew up by the sea.",
-          additionalInfo: "",
-          publicId: "oc/portrait.jpg",
-          resourceType: "image",
-          mediaUrl: "https://cdn.example.b-cdn.net/oc/portrait.jpg",
-          thumbnailUrl: "https://cdn.example.b-cdn.net/oc/portrait.jpg",
-          width: 800,
-          height: 1200,
-          blurHash: null,
-        },
-      ]),
+    qb.getRawAndEntities = jest.fn(() =>
+      Promise.resolve({
+        entities: [
+          {
+            id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            name: "Mira",
+            age: "19",
+            likes: "",
+            dislikes: "",
+            background: "Grew up by the sea.",
+            additionalInfo: "",
+            publicId: "oc/portrait.jpg",
+            resourceType: "image",
+            mediaUrl: "https://cdn.example.b-cdn.net/oc/portrait.jpg",
+            thumbnailUrl: "https://cdn.example.b-cdn.net/oc/portrait.jpg",
+            width: 800,
+            height: 1200,
+            blurHash: null,
+          },
+        ],
+        raw: [{ total_count: "1" }],
+      }),
     );
     repository.createQueryBuilder.mockReturnValue(qb);
 
@@ -132,6 +136,8 @@ describe("OriginalCharactersService", () => {
     );
     expect(result.data).toHaveLength(1);
     expect(result.meta.total).toBe(1);
+    expect(qb.getCount).not.toHaveBeenCalled();
+    expect(qb.addSelect).toHaveBeenCalledWith("COUNT(*) OVER()", "total_count");
   });
 
   it("replaces the portrait and deletes the previous asset", async () => {

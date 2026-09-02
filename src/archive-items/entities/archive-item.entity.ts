@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
@@ -9,6 +10,21 @@ import type { MediaType } from "../../common/media-type";
 import type { ArchiveSection } from "../../common/archive-section";
 import type { MediaAssetResponse } from "../dto/media-asset.dto";
 
+@Index("archive_items_media_section_sort_idx", [
+  "mediaType",
+  "section",
+  "rating",
+  "name",
+])
+@Index("archive_items_images_single_sort_idx", ["rating", "name"], {
+  where: `"mediaType" = 'image' AND "section" = 'images' AND "mediaAssetCount" <= 1`,
+})
+@Index("archive_items_images_group_sort_idx", ["rating", "name"], {
+  where: `"mediaType" = 'image' AND "mediaAssetCount" >= 2`,
+})
+@Index("archive_items_tags_gin_idx", ["tags"], {
+  synchronize: false,
+} as import("typeorm").IndexOptions)
 @Entity("archive_items")
 export class ArchiveItemEntity {
   @PrimaryGeneratedColumn("uuid")
@@ -110,6 +126,21 @@ export class ArchiveItemEntity {
    */
   @Column({ type: "jsonb", nullable: true })
   mediaAssets!: MediaAssetResponse[] | null;
+
+  /**
+   * Number of ordered media assets. Kept as a stored generated column so list
+   * filters do not need to parse the JSONB payload for every archive item.
+   */
+  @Column({
+    type: "int",
+    name: "mediaAssetCount",
+    asExpression:
+      'CASE WHEN "mediaAssets" IS NOT NULL AND jsonb_typeof("mediaAssets") = \'array\' THEN jsonb_array_length("mediaAssets") ELSE 0 END',
+    generatedType: "STORED",
+    insert: false,
+    update: false,
+  })
+  mediaAssetCount!: number;
 
   @CreateDateColumn({ type: "timestamptz" })
   createdAt!: Date;

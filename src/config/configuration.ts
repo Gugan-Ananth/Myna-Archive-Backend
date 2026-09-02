@@ -26,10 +26,10 @@ export default () => ({
     cdn: {
       /** Pull Zone hostname for image delivery, e.g. myzone.b-cdn.net */
       hostname: process.env.BUNNY_CDN_HOSTNAME,
-      /** Bunny Optimizer query string for grid thumbnails */
+      /** Bunny Optimizer query string for grid/detail preview thumbnails */
       imageThumbQuery:
         process.env.BUNNY_IMAGE_THUMB_QUERY ??
-        "width=480&height=270&aspect_ratio=16:9&quality=80",
+        "width=480&quality=68&format=webp",
       /**
        * Account API key (Dashboard → Account → API). Optional; when set,
        * image deletes also purge Pull Zone / Optimizer edge cache for that URL.

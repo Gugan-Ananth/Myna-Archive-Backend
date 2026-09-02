@@ -4,8 +4,8 @@ import { Test } from "@nestjs/testing";
 import { AuthService } from "./auth.service";
 import { verifyAccessToken } from "./token";
 
-const EMAIL = "admin@myna.archive";
-const PASSWORD = "Test@123";
+const EMAIL = "Mynah.chan";
+const PASSWORD = "Mynah.chan";
 const SECRET = "test-secret-at-least-32-characters-long";
 
 describe("AuthService", () => {
@@ -45,7 +45,7 @@ describe("AuthService", () => {
   });
 
   it("accepts the email case-insensitively", () => {
-    const { accessToken } = service.login("  Admin@Myna.Archive  ", PASSWORD);
+    const { accessToken } = service.login("  MYNAH.CHAN  ", PASSWORD);
     expect(accessToken).toBeTruthy();
   });
 

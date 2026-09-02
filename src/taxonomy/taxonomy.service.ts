@@ -90,16 +90,17 @@ export class TaxonomyService implements OnModuleInit {
   }
 
   async list(): Promise<TaxonomyCategoryDto[]> {
-    const categories = await this.categories.find({
-      relations: { tags: true },
-      order: {
-        sortOrder: "ASC",
-        label: "ASC",
-        tags: { sortOrder: "ASC", label: "ASC" },
-      },
-    });
-
-    const counts = await this.usageCounts();
+    const [categories, counts] = await Promise.all([
+      this.categories.find({
+        relations: { tags: true },
+        order: {
+          sortOrder: "ASC",
+          label: "ASC",
+          tags: { sortOrder: "ASC", label: "ASC" },
+        },
+      }),
+      this.usageCounts(),
+    ]);
 
     return categories.map((cat) => ({
       slug: cat.slug,
@@ -192,9 +193,7 @@ export class TaxonomyService implements OnModuleInit {
 
   async deleteCategory(categorySlug: string): Promise<void> {
     const category = await this.requireCategory(categorySlug, true);
-    for (const tag of category.tags ?? []) {
-      await this.rewriteEncodedTag(`${category.slug}:${tag.slug}`, null);
-    }
+    await this.rewriteCategoryPrefix(category.slug, null);
     await this.categories.remove(category);
   }
 
@@ -355,40 +354,69 @@ export class TaxonomyService implements OnModuleInit {
     from: string,
     to: string | null,
   ): Promise<void> {
-    const items = await this.archiveItems
-      .createQueryBuilder("item")
-      .where(":from = ANY (item.tags)", { from })
-      .getMany();
-    for (const item of items) {
-      const next = item.tags
-        .map((tag) => (tag === from ? to : tag))
-        .filter((tag): tag is string => Boolean(tag));
-      item.tags = [...new Set(next)];
-      await this.archiveItems.save(item);
-    }
+    await this.archiveItems.query(
+      `
+      UPDATE archive_items AS item
+      SET tags = COALESCE(
+        (
+          SELECT array_agg(mapped.value ORDER BY mapped.first_position)
+          FROM (
+            SELECT CASE WHEN tag = $1 THEN $2 ELSE tag END AS value,
+                   MIN(position) AS first_position
+            FROM unnest(item.tags) WITH ORDINALITY AS source(tag, position)
+            WHERE tag IS NOT NULL
+              AND (tag <> $1 OR $2 IS NOT NULL)
+            GROUP BY CASE WHEN tag = $1 THEN $2 ELSE tag END
+          ) AS mapped
+        ),
+        ARRAY[]::text[]
+      ),
+      "updatedAt" = now()
+      WHERE $1 = ANY (item.tags)
+      `,
+      [from, to],
+    );
   }
 
   private async rewriteCategoryPrefix(
     oldSlug: string,
-    newSlug: string,
+    newSlug: string | null,
   ): Promise<void> {
     const prefix = `${oldSlug}:`;
-    const items = await this.archiveItems
-      .createQueryBuilder("item")
-      .where(
-        `EXISTS (
-          SELECT 1 FROM unnest(item.tags) AS t(tag)
-          WHERE t.tag LIKE :prefix
-        )`,
-        { prefix: `${prefix}%` },
+    const pattern = `${prefix}%`;
+    const nextPrefix = newSlug === null ? null : `${newSlug}:`;
+    await this.archiveItems.query(
+      `
+      UPDATE archive_items AS item
+      SET tags = COALESCE(
+        (
+          SELECT array_agg(mapped.value ORDER BY mapped.first_position)
+          FROM (
+            SELECT CASE
+                     WHEN tag LIKE $1 THEN $3 || substring(tag FROM length($2) + 1)
+                     ELSE tag
+                   END AS value,
+                   MIN(position) AS first_position
+            FROM unnest(item.tags) WITH ORDINALITY AS source(tag, position)
+            WHERE tag IS NOT NULL
+              AND (tag NOT LIKE $1 OR $3 IS NOT NULL)
+            GROUP BY CASE
+                       WHEN tag LIKE $1 THEN $3 || substring(tag FROM length($2) + 1)
+                       ELSE tag
+                     END
+          ) AS mapped
+        ),
+        ARRAY[]::text[]
+      ),
+      "updatedAt" = now()
+      WHERE EXISTS (
+        SELECT 1
+        FROM unnest(item.tags) AS source(tag)
+        WHERE tag LIKE $1
       )
-      .getMany();
-    for (const item of items) {
-      item.tags = item.tags.map((tag) =>
-        tag.startsWith(prefix) ? `${newSlug}:${tag.slice(prefix.length)}` : tag,
-      );
-      await this.archiveItems.save(item);
-    }
+      `,
+      [pattern, prefix, nextPrefix],
+    );
   }
 
   private async ensureTagUnderCategory(
@@ -465,15 +493,17 @@ export class TaxonomyService implements OnModuleInit {
   }
 
   private async getCategoryDto(slug: string): Promise<TaxonomyCategoryDto> {
-    const category = await this.categories.findOne({
-      where: { slug },
-      relations: { tags: true },
-      order: { tags: { sortOrder: "ASC", label: "ASC" } },
-    });
+    const [category, counts] = await Promise.all([
+      this.categories.findOne({
+        where: { slug },
+        relations: { tags: true },
+        order: { tags: { sortOrder: "ASC", label: "ASC" } },
+      }),
+      this.usageCounts(),
+    ]);
     if (!category) {
       throw new NotFoundException(`Category “${slug}” not found`);
     }
-    const counts = await this.usageCounts();
     return {
       slug: category.slug,
       label: category.label,

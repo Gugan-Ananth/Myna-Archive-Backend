@@ -249,7 +249,7 @@ export class BunnyService implements OnApplicationBootstrap {
       const base = `https://${cdn}/${path}`;
       const thumbQuery =
         this.config.get<string>("bunny.cdn.imageThumbQuery") ??
-        "width=480&height=270&aspect_ratio=16:9&quality=80";
+        "width=480&quality=68&format=webp";
 
       return {
         mediaUrl: base,

@@ -174,6 +174,7 @@ Use cover `width`/`height` when present for masonry cell aspect ratio without me
 | Display metadata + tags endpoint | [0008](docs/adr/0008-display-metadata-and-tags-endpoint.md) |
 | Image groups (multi-image items) | [0009](docs/adr/0009-image-groups.md) |
 | Comics (page sequences) | [0012](docs/adr/0012-comics.md) |
+| Archive item list performance | [0013](docs/adr/0013-archive-item-list-performance.md) |
 
 ## Open decisions
 
@@ -185,4 +186,4 @@ Use cover `width`/`height` when present for masonry cell aspect ratio without me
 - HLS / adaptive streaming if long-form video becomes common (deferred; ADR 0006).
 - Time-limited image upload tokens (Edge Storage currently returns zone AccessKey for single-user v1).
 - Backfill of `width` / `height` / `blurHash` for pre-0008 items (leave null until needed).
-- DB indexes for tag filter / `q` search (GIN on `tags`, trigram or `tsvector`) if collection size makes list slow.
+- Additional indexes for free-text `q` search (trigram or `tsvector`) remain open; media/section/group and tag-list indexes are covered by [ADR 0013](docs/adr/0013-archive-item-list-performance.md).

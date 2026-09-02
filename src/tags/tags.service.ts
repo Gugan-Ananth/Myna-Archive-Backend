@@ -36,13 +36,9 @@ export class TagsService {
     }
 
     if (filter.imageGroup === true) {
-      where.push(
-        `item."mediaAssets" IS NOT NULL AND jsonb_typeof(item."mediaAssets") = 'array' AND jsonb_array_length(item."mediaAssets") >= 2`,
-      );
+      where.push(`item."mediaAssetCount" >= 2`);
     } else if (filter.imageGroup === false) {
-      where.push(
-        `(item."mediaAssets" IS NULL OR jsonb_typeof(item."mediaAssets") <> 'array' OR jsonb_array_length(item."mediaAssets") <= 1)`,
-      );
+      where.push(`item."mediaAssetCount" <= 1`);
     }
 
     const whereSql = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";

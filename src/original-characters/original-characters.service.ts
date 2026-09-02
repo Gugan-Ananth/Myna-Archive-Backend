@@ -72,9 +72,8 @@ export class OriginalCharactersService {
     }
 
     qb.orderBy("oc.createdAt", "DESC").addOrderBy("oc.name", "ASC");
-    const total = await qb.getCount();
     // Board payload: skip long profile text; search still uses those columns.
-    const rows = await qb
+    const { entities: rows, raw } = await qb
       .select([
         "oc.id",
         "oc.name",
@@ -88,9 +87,14 @@ export class OriginalCharactersService {
         "oc.starred",
         "oc.createdAt",
       ])
+      .addSelect("COUNT(*) OVER()", "total_count")
       .skip((page - 1) * pageSize)
       .take(pageSize)
-      .getMany();
+      .getRawAndEntities<{ total_count: string }>();
+    const firstRow = raw[0];
+    const total = firstRow
+      ? Number(firstRow.total_count)
+      : await qb.clone().skip(undefined).take(undefined).getCount();
 
     return {
       data: rows.map(toOriginalCharacterResponse),

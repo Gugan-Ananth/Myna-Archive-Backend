@@ -154,13 +154,9 @@ export class ArchiveItemsService {
     }
 
     if (query.imageGroup === true) {
-      qb.andWhere(
-        "item.mediaAssets IS NOT NULL AND jsonb_typeof(item.mediaAssets) = 'array' AND jsonb_array_length(item.mediaAssets) >= 2",
-      );
+      qb.andWhere("item.mediaAssetCount >= 2");
     } else if (query.imageGroup === false) {
-      qb.andWhere(
-        "(item.mediaAssets IS NULL OR jsonb_typeof(item.mediaAssets) <> 'array' OR jsonb_array_length(item.mediaAssets) <= 1)",
-      );
+      qb.andWhere("item.mediaAssetCount <= 1");
     }
 
     if (query.tag && query.tag.length > 0) {
@@ -172,21 +168,65 @@ export class ArchiveItemsService {
 
     if (query.q?.trim()) {
       const q = `%${query.q.trim().toLowerCase()}%`;
-      qb.andWhere(
-        `(LOWER(item.name) LIKE :q OR LOWER(item.description) LIKE :q OR LOWER(item.bodyHtml) LIKE :q OR EXISTS (
+      const searchClauses = [
+        "LOWER(item.name) LIKE :q",
+        "LOWER(item.description) LIKE :q",
+        ...(query.mediaType && query.mediaType !== "story"
+          ? []
+          : ["LOWER(item.bodyHtml) LIKE :q"]),
+        `EXISTS (
           SELECT 1 FROM unnest(item.tags) AS t WHERE LOWER(t) LIKE :q
-        ))`,
+        )`,
+      ];
+      qb.andWhere(
+        `(${searchClauses.join(" OR ")})`,
         { q },
       );
     }
 
     qb.orderBy("item.rating", "DESC").addOrderBy("item.name", "ASC");
 
-    const total = await qb.getCount();
-    const entities = await qb
+    // List cards do not need the potentially large story body for non-story
+    // queries. Keep the response shape intact: the mapper defaults bodyHtml
+    // to an empty string when the column is not selected.
+    const listColumns = [
+      "item.id",
+      "item.name",
+      "item.description",
+      "item.author",
+      "item.summary",
+      "item.tags",
+      "item.rating",
+      "item.mediaType",
+      "item.starred",
+      "item.section",
+      "item.seriesId",
+      "item.chapterNumber",
+      "item.thumbnailUrl",
+      "item.mediaUrl",
+      "item.width",
+      "item.height",
+      "item.blurHash",
+      "item.publicId",
+      "item.resourceType",
+      "item.mediaAssets",
+    ];
+    if (!query.mediaType || query.mediaType === "story") {
+      listColumns.push("item.bodyHtml");
+    }
+
+    qb.select(listColumns).addSelect("COUNT(*) OVER()", "total_count");
+    const { entities, raw } = await qb
       .skip((page - 1) * pageSize)
       .take(pageSize)
-      .getMany();
+      .getRawAndEntities<{ total_count: string }>();
+    const firstRow = raw[0];
+    // Window aggregates have no row to carry the total when a client asks for
+    // a page beyond the end. Preserve the old pagination metadata in that
+    // uncommon case with a count-only fallback.
+    const total = firstRow
+      ? Number(firstRow.total_count)
+      : await qb.clone().skip(undefined).take(undefined).getCount();
 
     const counts = await this.chapterCountsForRoots(
       entities
@@ -506,16 +546,14 @@ export class ArchiveItemsService {
 
     if (category === "images") {
       qb.andWhere(
-        `item.mediaType = 'image' AND item.section = 'images' AND (item.mediaAssets IS NULL OR jsonb_typeof(item.mediaAssets) <> 'array' OR jsonb_array_length(item.mediaAssets) <= 1)`,
+        `item.mediaType = 'image' AND item.section = 'images' AND item.mediaAssetCount <= 1`,
       );
     } else if (category === "cute-things") {
       qb.andWhere(
         `item.mediaType = 'image' AND item.section = 'cute-things'`,
       );
     } else if (category === "collections") {
-      qb.andWhere(
-        `item.mediaType = 'image' AND item.mediaAssets IS NOT NULL AND jsonb_typeof(item.mediaAssets) = 'array' AND jsonb_array_length(item.mediaAssets) >= 2`,
-      );
+      qb.andWhere(`item.mediaType = 'image' AND item.mediaAssetCount >= 2`);
     } else {
       qb.andWhere("item.mediaType = :starMediaType", {
         starMediaType:
@@ -676,11 +714,13 @@ export class ArchiveItemsService {
 
   private async destroyItemAssets(entity: ArchiveItemEntity): Promise<void> {
     const assets = resolveMediaAssets(entity);
-    for (const asset of assets) {
-      if (!asset.publicId) continue;
-      const resourceType = asset.resourceType === "video" ? "video" : "image";
-      await this.bunny.destroy(asset.publicId, resourceType);
-    }
+    await Promise.all(
+      assets.map(async (asset) => {
+        if (!asset.publicId) return;
+        const resourceType = asset.resourceType === "video" ? "video" : "image";
+        await this.bunny.destroy(asset.publicId, resourceType);
+      }),
+    );
   }
 
   private async findEntityOrFail(id: string): Promise<ArchiveItemEntity> {

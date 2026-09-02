@@ -48,7 +48,7 @@ describe("TagsService", () => {
 
     const [sql, params] = repository.query.mock.calls[0] as [string, string[]];
     expect(sql).toContain('item."mediaType" = $1');
-    expect(sql).toContain("jsonb_array_length");
+    expect(sql).toContain('item."mediaAssetCount"');
     expect(sql).toContain("<= 1");
     expect(params).toEqual(["image"]);
   });

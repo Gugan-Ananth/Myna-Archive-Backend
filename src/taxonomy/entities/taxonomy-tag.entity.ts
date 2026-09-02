@@ -14,6 +14,7 @@ import { TagCategoryEntity } from "./tag-category.entity";
 @Entity("taxonomy_tags")
 @Unique(["categoryId", "slug"])
 @Index(["slug"])
+@Index("taxonomy_tags_category_sort_idx", ["categoryId", "sortOrder", "label"])
 export class TaxonomyTagEntity {
   @PrimaryGeneratedColumn("uuid")
   id!: string;

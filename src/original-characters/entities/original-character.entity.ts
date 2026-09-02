@@ -2,10 +2,15 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
 
+@Index("original_characters_list_sort_idx", ["createdAt", "name"])
+@Index("original_characters_starred_sort_idx", ["createdAt", "name"], {
+  where: `"starred" = true`,
+})
 @Entity("original_characters")
 export class OriginalCharacterEntity {
   @PrimaryGeneratedColumn("uuid")

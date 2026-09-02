@@ -20,7 +20,7 @@ Uploads need high-quality originals, grid thumbnails (low quality first), and fu
 - **Ingest:** signed / credentialed **direct upload** browser → Bunny, then Nest **finalize** create with `publicId` (ADR 0007). Nest does not accept multi‑hundred‑MB request bodies as the product path.
 - Nest persists `thumbnailUrl` and `mediaUrl` (and internal `publicId` / resource type) on the Archive Item after verifying the uploaded asset.
 - **Thumbnail**:
-  - Image: CDN URL + Optimizer query (e.g. `?width=480&height=270&aspect_ratio=16:9`).
+  - Image: CDN URL + uncropped Optimizer query (e.g. `?width=480&quality=68&format=webp`).
   - Video: Stream poster (`…/{videoId}/thumbnail.jpg`).
 - **Full media (`mediaUrl`)**: high-quality image CDN URL **or** progressive Stream MP4 URL (`…/play_{resolution}p.mp4`) for playback.
 - On **delete** of an Archive Item, best-effort delete the Bunny asset (Storage file or Stream video) via `publicId` so storage does not leak.
