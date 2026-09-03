@@ -1,6 +1,9 @@
 /** Max inline images in one written story. */
 export const MAX_STORY_ASSETS = 20;
 
+/** Max `bodyHtml` characters on create/update. Matches the frontend composer. */
+export const MAX_STORY_BODY_CHARS = 200_000;
+
 const IMG_TAG = /<img\b[^>]*>/gi;
 const BLOCKED_TAGS = /<\/?(script|style|iframe|object|embed|link|meta|form|input|textarea|button)[^>]*>/gi;
 const EVENT_ATTRS = /\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi;

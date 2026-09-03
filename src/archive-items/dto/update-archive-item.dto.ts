@@ -13,6 +13,7 @@ import {
   MinLength,
   ValidateNested,
 } from "class-validator";
+import { MAX_STORY_BODY_CHARS } from "../../common/story-html";
 import { CreateMediaAssetDto } from "./media-asset.dto";
 
 export class UpdateArchiveItemDto {
@@ -39,7 +40,7 @@ export class UpdateArchiveItemDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(200_000)
+  @MaxLength(MAX_STORY_BODY_CHARS)
   bodyHtml?: string;
 
   @IsOptional()

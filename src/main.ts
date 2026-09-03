@@ -1,11 +1,22 @@
 import { Logger, ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
+import { ExpressAdapter } from "@nestjs/platform-express";
+import express from "express";
 import { AppModule } from "./app.module";
-import { Express } from "express";
+
+/** Covers a 200k-char story JSON payload (UTF-8 + wrapping fields). */
+const JSON_BODY_LIMIT = "2mb";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const server = express();
+  server.set("trust proxy", 1);
+  server.use(express.json({ limit: JSON_BODY_LIMIT }));
+  server.use(express.urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
+
+  const app = await NestFactory.create(AppModule, new ExpressAdapter(server), {
+    bodyParser: false,
+  });
   const config = app.get(ConfigService);
   const logger = new Logger("Bootstrap");
 
@@ -26,9 +37,6 @@ async function bootstrap() {
   if (corsOrigin) {
     app.enableCors({ origin: corsOrigin });
   }
-
-  const server = app.getHttpAdapter().getInstance() as Express;
-  server.set("trust proxy", 1);
 
   const port = config.get<number>("port") ?? 3001;
   await app.listen(port);

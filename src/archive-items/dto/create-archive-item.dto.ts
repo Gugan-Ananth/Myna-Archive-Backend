@@ -21,6 +21,7 @@ import {
   ARCHIVE_SECTIONS,
   type ArchiveSection,
 } from "../../common/archive-section";
+import { MAX_STORY_BODY_CHARS } from "../../common/story-html";
 import { CreateMediaAssetDto, MAX_COMIC_ASSETS } from "./media-asset.dto";
 
 /**
@@ -98,7 +99,7 @@ export class CreateArchiveItemDto {
   /** Written story HTML. Inline images are rewritten to CDN URLs on save. */
   @IsOptional()
   @IsString()
-  @MaxLength(200_000)
+  @MaxLength(MAX_STORY_BODY_CHARS)
   bodyHtml?: string;
 
   /** Optional short story blurb for the homepage card. */
