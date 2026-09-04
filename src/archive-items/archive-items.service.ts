@@ -35,6 +35,11 @@ import {
   MAX_IMAGE_ASSETS,
   type MediaAssetResponse,
 } from "./dto/media-asset.dto";
+import {
+  MAX_STORY_CHARACTERS,
+  StoryCharacterInputDto,
+  type StoryCharacterResponse,
+} from "./dto/story-character.dto";
 import { UpdateArchiveItemDto } from "./dto/update-archive-item.dto";
 import { ArchiveItemEntity } from "./entities/archive-item.entity";
 
@@ -55,6 +60,9 @@ export class ArchiveItemsService {
       throw new BadRequestException(
         "At least one non-empty tag is required after normalization",
       );
+    }
+    if (dto.mediaType !== "story" && (dto.characters?.length ?? 0) > 0) {
+      throw new BadRequestException("Only stories can have characters");
     }
     // Persist any new category:tag pairs into the taxonomy vocabulary.
     await this.taxonomy.ensureEncodedTags(tags);
@@ -92,6 +100,10 @@ export class ArchiveItemsService {
     }
 
     const series = await this.resolveStorySeries(dto);
+    const characters =
+      dto.mediaType === "story"
+        ? await this.resolveStoryCharacterInputs(dto.characters)
+        : [];
 
     const entity = this.archiveItems.create({
       name: dto.name.trim(),
@@ -113,6 +125,7 @@ export class ArchiveItemsService {
       publicId: cover?.publicId ?? "",
       resourceType: cover?.resourceType ?? "image",
       mediaAssets: mediaAssets.length > 0 ? mediaAssets : [],
+      characters,
     });
 
     const saved = await this.archiveItems.save(entity);
@@ -210,6 +223,7 @@ export class ArchiveItemsService {
       "item.publicId",
       "item.resourceType",
       "item.mediaAssets",
+      "item.characters",
     ];
     if (!query.mediaType || query.mediaType === "story") {
       listColumns.push("item.bodyHtml");
@@ -358,6 +372,14 @@ export class ArchiveItemsService {
       }
       await this.taxonomy.ensureEncodedTags(tags);
       entity.tags = tags;
+    }
+    if (dto.characters !== undefined) {
+      if (entity.mediaType !== "story") {
+        throw new BadRequestException("Only stories can have characters");
+      }
+      const next = await this.resolveStoryCharacterInputs(dto.characters);
+      await this.destroyUnusedCharacterPortraits(entity, next);
+      entity.characters = next;
     }
 
     const saved = await this.archiveItems.save(entity);
@@ -714,13 +736,103 @@ export class ArchiveItemsService {
 
   private async destroyItemAssets(entity: ArchiveItemEntity): Promise<void> {
     const assets = resolveMediaAssets(entity);
-    await Promise.all(
-      assets.map(async (asset) => {
-        if (!asset.publicId) return;
-        const resourceType = asset.resourceType === "video" ? "video" : "image";
-        await this.bunny.destroy(asset.publicId, resourceType);
-      }),
+    const seen = new Set<string>();
+    const jobs: Promise<void>[] = [];
+
+    const queue = (publicId: string, resourceType: "image" | "video") => {
+      const key = `${resourceType}:${publicId}`;
+      if (!publicId || seen.has(key)) return;
+      seen.add(key);
+      jobs.push(this.bunny.destroy(publicId, resourceType));
+    };
+
+    for (const asset of assets) {
+      if (!asset.publicId) continue;
+      const resourceType = asset.resourceType === "video" ? "video" : "image";
+      queue(asset.publicId, resourceType);
+    }
+    for (const character of entity.characters ?? []) {
+      if (character.publicId) queue(character.publicId, "image");
+    }
+    await Promise.all(jobs);
+  }
+
+  private async destroyUnusedCharacterPortraits(
+    entity: ArchiveItemEntity,
+    next: StoryCharacterResponse[],
+  ): Promise<void> {
+    const keep = new Set(
+      next.map((row) => row.publicId).filter((id): id is string => Boolean(id)),
     );
+    for (const asset of resolveMediaAssets(entity)) {
+      if (asset.publicId) keep.add(asset.publicId);
+    }
+    const jobs: Promise<void>[] = [];
+    const seen = new Set<string>();
+    for (const character of entity.characters ?? []) {
+      const id = character.publicId;
+      if (!id || keep.has(id) || seen.has(id)) continue;
+      seen.add(id);
+      jobs.push(this.bunny.destroy(id, "image"));
+    }
+    await Promise.all(jobs);
+  }
+
+  private async resolveStoryCharacterInputs(
+    input?: StoryCharacterInputDto[],
+  ): Promise<StoryCharacterResponse[]> {
+    if (!input?.length) return [];
+    if (input.length > MAX_STORY_CHARACTERS) {
+      throw new BadRequestException(
+        `Stories may have at most ${MAX_STORY_CHARACTERS} characters`,
+      );
+    }
+
+    const seen = new Set<string>();
+    const characters: StoryCharacterResponse[] = [];
+    for (const row of input) {
+      const name = row.name.trim().replace(/\s+/g, " ");
+      if (!name) {
+        throw new BadRequestException("Story character name is required");
+      }
+      const key = name.toLowerCase();
+      if (seen.has(key)) {
+        throw new BadRequestException("Story character names must be unique");
+      }
+      seen.add(key);
+
+      const publicId = row.publicId?.trim() ?? "";
+      if (!publicId) {
+        characters.push({
+          name,
+          publicId: null,
+          mediaUrl: "",
+          thumbnailUrl: "",
+          width: null,
+          height: null,
+          blurHash: null,
+        });
+        continue;
+      }
+
+      const verified = await this.verifyAsset("image", {
+        publicId,
+        resourceType: "image",
+        width: row.width,
+        height: row.height,
+        blurHash: row.blurHash,
+      });
+      characters.push({
+        name,
+        publicId: verified.publicId,
+        mediaUrl: verified.mediaUrl,
+        thumbnailUrl: verified.thumbnailUrl,
+        width: verified.width,
+        height: verified.height,
+        blurHash: verified.blurHash,
+      });
+    }
+    return characters;
   }
 
   private async findEntityOrFail(id: string): Promise<ArchiveItemEntity> {

@@ -15,6 +15,10 @@ import {
 } from "class-validator";
 import { MAX_STORY_BODY_CHARS } from "../../common/story-html";
 import { CreateMediaAssetDto } from "./media-asset.dto";
+import {
+  MAX_STORY_CHARACTERS,
+  StoryCharacterInputDto,
+} from "./story-character.dto";
 
 export class UpdateArchiveItemDto {
   @IsOptional()
@@ -71,4 +75,15 @@ export class UpdateArchiveItemDto {
   @Min(0)
   @Max(10)
   rating?: number;
+
+  /**
+   * Replace this chapter's named speakers. Omit to leave unchanged.
+   * Send `[]` to clear. Portraits are not mixed into `assets`.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_STORY_CHARACTERS)
+  @ValidateNested({ each: true })
+  @Type(() => StoryCharacterInputDto)
+  characters?: StoryCharacterInputDto[];
 }

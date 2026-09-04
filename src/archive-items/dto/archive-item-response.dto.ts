@@ -2,6 +2,7 @@ import type { MediaType } from "../../common/media-type";
 import type { ArchiveSection } from "../../common/archive-section";
 import type { ArchiveItemEntity } from "../entities/archive-item.entity";
 import type { MediaAssetResponse } from "./media-asset.dto";
+import type { StoryCharacterResponse } from "./story-character.dto";
 
 /** Public Archive Item shape (cover + ordered media assets for groups). */
 export type ArchiveItemResponse = {
@@ -36,6 +37,11 @@ export type ArchiveItemResponse = {
    * 2–25 for an image group; 1–80 for a comic. Cover is always index 0.
    */
   mediaAssets: MediaAssetResponse[];
+  /**
+   * Named speakers for a written story (empty for other media types).
+   * Optional portraits are stored here, not in `mediaAssets`.
+   */
+  characters: StoryCharacterResponse[];
 };
 
 export type PaginatedArchiveItemsResponse = {
@@ -73,6 +79,22 @@ export function resolveMediaAssets(
   ];
 }
 
+export function resolveStoryCharacters(
+  entity: ArchiveItemEntity,
+): StoryCharacterResponse[] {
+  const rows = entity.characters;
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  return rows.map((row) => ({
+    name: typeof row.name === "string" ? row.name : "",
+    publicId: row.publicId ?? null,
+    mediaUrl: row.mediaUrl ?? "",
+    thumbnailUrl: row.thumbnailUrl ?? "",
+    width: row.width ?? null,
+    height: row.height ?? null,
+    blurHash: row.blurHash ?? null,
+  }));
+}
+
 export function toArchiveItemResponse(
   entity: ArchiveItemEntity,
   extras?: { chapterCount?: number },
@@ -101,5 +123,6 @@ export function toArchiveItemResponse(
     height: cover?.height ?? entity.height ?? null,
     blurHash: cover?.blurHash ?? entity.blurHash ?? null,
     mediaAssets,
+    characters: resolveStoryCharacters(entity),
   };
 }

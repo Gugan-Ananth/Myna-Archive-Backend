@@ -256,8 +256,76 @@ describe("ArchiveItemsService", () => {
       expect(bunny.verifyAndDeriveUrls).not.toHaveBeenCalled();
       expect(result.mediaType).toBe("story");
       expect(result.mediaAssets).toEqual([]);
+      expect(result.characters).toEqual([]);
       expect(result.bodyHtml).toContain("<p>hello</p>");
       expect(result.mediaUrl).toBe("");
+    });
+
+    it("stores named story characters and verifies optional portraits", async () => {
+      bunny.verifyAndDeriveUrls.mockImplementation(
+        (params: { publicId: string }) =>
+          Promise.resolve(mockImageVerify(params.publicId)),
+      );
+
+      const result = await service.create({
+        mediaType: "story",
+        name: "Night letter",
+        tags: ["x"],
+        rating: 8,
+        bodyHtml: '<p>Suki: "hello"</p>',
+        characters: [
+          { name: "  Suki  ", publicId: "myna-archive/suki.jpg" },
+          { name: "Lara" },
+        ],
+      });
+
+      expect(bunny.verifyAndDeriveUrls).toHaveBeenCalledTimes(1);
+      expect(result.characters).toEqual([
+        expect.objectContaining({
+          name: "Suki",
+          publicId: "myna-archive/suki.jpg",
+          mediaUrl: expect.stringContaining("suki.jpg"),
+        }),
+        {
+          name: "Lara",
+          publicId: null,
+          mediaUrl: "",
+          thumbnailUrl: "",
+          width: null,
+          height: null,
+          blurHash: null,
+        },
+      ]);
+      expect(result.mediaAssets).toEqual([]);
+    });
+
+    it("rejects duplicate story character names", async () => {
+      await expect(
+        service.create({
+          mediaType: "story",
+          name: "Dup",
+          tags: ["x"],
+          rating: 1,
+          bodyHtml: "<p>hi</p>",
+          characters: [{ name: "Suki" }, { name: "suki" }],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(bunny.verifyAndDeriveUrls).not.toHaveBeenCalled();
+    });
+
+    it("rejects characters on non-story items", async () => {
+      await expect(
+        service.create({
+          mediaType: "image",
+          name: "Nope",
+          tags: ["x"],
+          rating: 1,
+          publicId: "myna-archive/a.jpg",
+          resourceType: "image",
+          characters: [{ name: "Suki" }],
+        }),
+      ).rejects.toThrow("Only stories can have characters");
+      expect(bunny.verifyAndDeriveUrls).not.toHaveBeenCalled();
     });
 
     it("treats an extra leading asset as an optional story cover", async () => {
@@ -633,6 +701,7 @@ describe("ArchiveItemsService", () => {
         height: null,
         blurHash: null,
         mediaAssets: [],
+        characters: [],
       } as ArchiveItemEntity;
       repository.findOne.mockResolvedValue(entity);
 
@@ -643,6 +712,56 @@ describe("ArchiveItemsService", () => {
       expect(result.author).toBe("New Author");
       expect(repository.save).toHaveBeenCalledWith(
         expect.objectContaining({ author: "New Author" }),
+      );
+    });
+
+    it("replaces story characters and destroys unused portraits", async () => {
+      bunny.verifyAndDeriveUrls.mockImplementation(
+        (params: { publicId: string }) =>
+          Promise.resolve(mockImageVerify(params.publicId)),
+      );
+      const entity = {
+        id: "11111111-1111-1111-1111-111111111111",
+        publicId: "",
+        resourceType: "image",
+        name: "Story",
+        description: "",
+        author: "",
+        bodyHtml: "<p>hello</p>",
+        summary: "",
+        tags: ["x"],
+        rating: 5,
+        mediaType: "story",
+        seriesId: null,
+        chapterNumber: 1,
+        thumbnailUrl: "",
+        mediaUrl: "",
+        width: null,
+        height: null,
+        blurHash: null,
+        mediaAssets: [],
+        characters: [
+          {
+            name: "Suki",
+            publicId: "myna-archive/suki-old.jpg",
+            mediaUrl: "https://cdn.example/suki-old.jpg",
+            thumbnailUrl: "https://cdn.example/suki-old.jpg?w=1",
+            width: null,
+            height: null,
+            blurHash: null,
+          },
+        ],
+      } as ArchiveItemEntity;
+      repository.findOne.mockResolvedValue(entity);
+
+      const result = await service.update(entity.id, {
+        characters: [{ name: "Suki", publicId: "myna-archive/suki-new.jpg" }],
+      });
+
+      expect(result.characters[0]?.publicId).toBe("myna-archive/suki-new.jpg");
+      expect(bunny.destroy).toHaveBeenCalledWith(
+        "myna-archive/suki-old.jpg",
+        "image",
       );
     });
 
@@ -669,6 +788,7 @@ describe("ArchiveItemsService", () => {
         height: 100,
         blurHash: null,
         mediaAssets: [],
+        characters: [],
       } as ArchiveItemEntity;
       repository.findOne.mockResolvedValue(entity);
 
@@ -703,6 +823,7 @@ describe("ArchiveItemsService", () => {
         height: 100,
         blurHash: null,
         mediaAssets: [],
+        characters: [],
       } as ArchiveItemEntity;
       repository.findOne.mockResolvedValue(entity);
 
@@ -763,6 +884,47 @@ describe("ArchiveItemsService", () => {
       expect(bunny.destroy).toHaveBeenCalledTimes(2);
       expect(bunny.destroy).toHaveBeenCalledWith("myna-archive/a.jpg", "image");
       expect(bunny.destroy).toHaveBeenCalledWith("myna-archive/b.jpg", "image");
+      expect(repository.remove).toHaveBeenCalled();
+    });
+
+    it("destroys story character portraits with the chapter", async () => {
+      repository.findOne.mockResolvedValue({
+        id: "11111111-1111-1111-1111-111111111111",
+        publicId: "",
+        resourceType: "image",
+        name: "chapter",
+        description: "",
+        tags: ["a"],
+        rating: 1,
+        mediaType: "story",
+        seriesId: null,
+        chapterNumber: 1,
+        thumbnailUrl: "",
+        mediaUrl: "",
+        width: null,
+        height: null,
+        blurHash: null,
+        mediaAssets: [],
+        characters: [
+          {
+            name: "Suki",
+            publicId: "myna-archive/suki.jpg",
+            mediaUrl: "m",
+            thumbnailUrl: "t",
+            width: null,
+            height: null,
+            blurHash: null,
+          },
+        ],
+      });
+      repository.find.mockResolvedValue([]);
+
+      await service.remove("11111111-1111-1111-1111-111111111111");
+
+      expect(bunny.destroy).toHaveBeenCalledWith(
+        "myna-archive/suki.jpg",
+        "image",
+      );
       expect(repository.remove).toHaveBeenCalled();
     });
 

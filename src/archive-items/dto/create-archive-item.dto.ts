@@ -23,6 +23,10 @@ import {
 } from "../../common/archive-section";
 import { MAX_STORY_BODY_CHARS } from "../../common/story-html";
 import { CreateMediaAssetDto, MAX_COMIC_ASSETS } from "./media-asset.dto";
+import {
+  MAX_STORY_CHARACTERS,
+  StoryCharacterInputDto,
+} from "./story-character.dto";
 
 /**
  * Create Archive Item.
@@ -119,6 +123,17 @@ export class CreateArchiveItemDto {
   @Min(1)
   @Max(999)
   chapterNumber?: number;
+
+  /**
+   * Named speakers for this chapter. Portraits are verified like other
+   * images and stored separately from cover/body `assets`.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_STORY_CHARACTERS)
+  @ValidateNested({ each: true })
+  @Type(() => StoryCharacterInputDto)
+  characters?: StoryCharacterInputDto[];
 
   /** Legacy cover dims — ignored when `assets` carries per-slide dims. */
   @IsOptional()

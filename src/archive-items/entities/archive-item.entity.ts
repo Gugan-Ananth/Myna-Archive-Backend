@@ -9,6 +9,7 @@ import {
 import type { MediaType } from "../../common/media-type";
 import type { ArchiveSection } from "../../common/archive-section";
 import type { MediaAssetResponse } from "../dto/media-asset.dto";
+import type { StoryCharacterResponse } from "../dto/story-character.dto";
 
 @Index("archive_items_media_section_sort_idx", [
   "mediaType",
@@ -126,6 +127,13 @@ export class ArchiveItemEntity {
    */
   @Column({ type: "jsonb", nullable: true })
   mediaAssets!: MediaAssetResponse[] | null;
+
+  /**
+   * Named speakers for a written story, each with an optional portrait.
+   * Empty for other media types. Not mixed into `mediaAssets`.
+   */
+  @Column({ type: "jsonb", default: () => "'[]'" })
+  characters!: StoryCharacterResponse[];
 
   /**
    * Number of ordered media assets. Kept as a stored generated column so list

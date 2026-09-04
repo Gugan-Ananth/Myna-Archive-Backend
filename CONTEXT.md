@@ -31,6 +31,7 @@ Companion: **Myna-Archive-FrontEnd** (Next.js). This repo is the **API backend**
 | **Media asset** | One uploaded binary + derived URLs within an Archive Item (cover or carousel slide). | "attachment", "file" as API type names |
 | **Image group** | An Archive Item with `mediaType: "image"` and **2–25** media assets. Homepage shows the **cover** (first asset) only; detail scrolls the rest. | "album", "gallery" as separate aggregates |
 | **Comic** | An Archive Item with `mediaType: "comic"` and **1–80** ordered page images. Cover is the first page. Own collection section and vertical reader — not an oversized image group. | "album", "image group", "story" as synonyms |
+| **Story character** | A named speaker in a written story chapter, with an optional portrait shown beside dialogue in the reader. Stored on the Archive Item (`characters`), not as a separate aggregate and not mixed into media assets. | "OC" as a synonym (Original Characters are a different collection), "cast", "actor" |
 
 ## Core model (API contract)
 
@@ -65,6 +66,17 @@ type ArchiveItem = {
   height: number | null;
   blurHash: string | null;
   mediaAssets: MediaAsset[]; // 1 for single/video; 2–25 for image group; 1–80 for comic
+  characters: StoryCharacter[]; // story speakers; empty for other media types
+};
+
+type StoryCharacter = {
+  name: string;
+  publicId: string | null;   // Bunny Storage path when a portrait was uploaded
+  mediaUrl: string;          // empty when using the default initials portrait
+  thumbnailUrl: string;
+  width: number | null;
+  height: number | null;
+  blurHash: string | null;
 };
 
 type TagSummary = {
@@ -104,6 +116,7 @@ Declares `mediaType`, `mimeType`, `byteSize` (must be ≤ limits). Returns Bunny
 | `rating` | yes | 0.0–10.0 |
 | `description` | no | Defaults to `""` |
 | `author` | no | Author name for written stories; defaults to `""` |
+| `characters` | no | Story speakers: `{ name, publicId?, width?, height?, blurHash? }`. Max 40. Names unique (case-insensitive). Portraits verified like other images and stored off `assets`. |
 | `width` / `height` / `blurHash` | no | Legacy cover-only; prefer per-asset fields inside `assets` |
 
 Nest verifies **each** asset, derives URLs, stores ordered `mediaAssets`, and denormalizes **cover = assets[0]** onto top-level URL/dim fields. For **video**, Nest also copies Stream `width`/`height` when available. Display metadata and assets are **immutable after create** (not on `PATCH`).
@@ -112,7 +125,7 @@ Nest verifies **each** asset, derives URLs, stores ordered `mediaAssets`, and de
 
 ### Update (JSON)
 
-Mutable: `name`, `description`, `author` (stories), `tags`, `rating`, `starred`.
+Mutable: `name`, `description`, `author` (stories), `summary` (stories), `bodyHtml` (stories), `assets` (stories), `characters` (stories), `tags`, `rating`, `starred`.
 Setting `starred` to `true` fails once the item's dashboard category already has
 10 starred entries. Unstarring is always allowed. Use `starred=true|false` on
 list endpoints to filter saved favorites.
