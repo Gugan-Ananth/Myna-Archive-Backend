@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { BunnyService } from "../media/bunny.service";
+import { ImagePreviewService } from "../media/image-preview.service";
 import { TaxonomyService } from "../taxonomy/taxonomy.service";
 import { ArchiveItemsService } from "./archive-items.service";
 import { ArchiveItemEntity } from "./entities/archive-item.entity";
@@ -53,6 +54,13 @@ describe("ArchiveItemsService", () => {
     ensureEncodedTags: jest.fn(() => Promise.resolve(undefined)),
   };
 
+  const previews = {
+    thumbnailUrlFor: jest.fn((_id: string, fallback: string) =>
+      Promise.resolve(fallback),
+    ),
+    destroyForOriginal: jest.fn(() => Promise.resolve(undefined)),
+  };
+
   function mockImageVerify(publicId: string) {
     return {
       resource: {
@@ -79,6 +87,7 @@ describe("ArchiveItemsService", () => {
           useValue: repository,
         },
         { provide: BunnyService, useValue: bunny },
+        { provide: ImagePreviewService, useValue: previews },
         { provide: TaxonomyService, useValue: taxonomy },
       ],
     }).compile();

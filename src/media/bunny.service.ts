@@ -12,6 +12,7 @@ import {
   type MediaType,
   mimeMatchesMediaType,
 } from "../common/media-type";
+import { previewPublicIdFor } from "./preview-public-id";
 import type {
   UploadSignatureDto,
   UploadSignatureResponse,
@@ -268,12 +269,63 @@ export class BunnyService implements OnApplicationBootstrap {
     return { mediaUrl, thumbnailUrl };
   }
 
+  cdnUrlFor(publicId: string): string {
+    const cdn = this.config.getOrThrow<string>("bunny.cdn.hostname");
+    const path = publicId.replace(/^\/+/, "");
+    return `https://${cdn}/${path}`;
+  }
+
+  async downloadImage(publicId: string): Promise<Buffer> {
+    const response = await this.storageFetch(publicId, { method: "GET" });
+    if (response.status === 404) {
+      throw new NotFoundException(`Bunny Storage asset not found: ${publicId}`);
+    }
+    if (!response.ok) {
+      throw new BadRequestException(
+        `Unable to download Bunny Storage asset: ${publicId}`,
+      );
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const maxBytes = this.config.getOrThrow<number>("upload.maxImageBytes");
+    if (buffer.byteLength > maxBytes) {
+      throw new BadRequestException(
+        `Uploaded asset size ${buffer.byteLength} exceeds max ${maxBytes} for image`,
+      );
+    }
+    return buffer;
+  }
+
+  async uploadImage(
+    publicId: string,
+    body: Buffer,
+    contentType: string,
+  ): Promise<void> {
+    const response = await this.storageFetch(publicId, {
+      method: "PUT",
+      headers: {
+        "Content-Type": contentType,
+      },
+      body: new Uint8Array(body),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new BadRequestException(
+        `Unable to upload Bunny Storage asset ${publicId}: HTTP ${response.status} ${text}`,
+      );
+    }
+  }
+
   async destroy(
     publicId: string,
     resourceType: "image" | "video",
   ): Promise<void> {
     try {
       if (resourceType === "image") {
+        const previewId = previewPublicIdFor(publicId);
+        if (previewId !== publicId) {
+          await this.destroyImage(previewId);
+          await this.purgeImageCdnCache(previewId);
+        }
         await this.destroyImage(publicId);
         // Storage DELETE does not drop edge/Optimizer cache — purge so
         // deleted media cannot keep serving from CDN.
@@ -450,17 +502,25 @@ export class BunnyService implements OnApplicationBootstrap {
     };
   }
 
-  private async destroyImage(publicId: string): Promise<void> {
+  private storageUrl(publicId: string): string {
     const zone = this.config.getOrThrow<string>("bunny.storage.zoneName");
     const hostname = this.config.getOrThrow<string>("bunny.storage.hostname");
-    const accessKey = this.config.getOrThrow<string>("bunny.storage.password");
     const path = publicId.replace(/^\/+/, "");
-    const url = `https://${hostname}/${zone}/${path}`;
+    return `https://${hostname}/${zone}/${path}`;
+  }
 
-    const response = await fetch(url, {
-      method: "DELETE",
-      headers: { AccessKey: accessKey },
-    });
+  private async storageFetch(
+    publicId: string,
+    init: RequestInit,
+  ): Promise<Response> {
+    const accessKey = this.config.getOrThrow<string>("bunny.storage.password");
+    const headers = new Headers(init.headers);
+    headers.set("AccessKey", accessKey);
+    return fetch(this.storageUrl(publicId), { ...init, headers });
+  }
+
+  private async destroyImage(publicId: string): Promise<void> {
+    const response = await this.storageFetch(publicId, { method: "DELETE" });
 
     if (!response.ok && response.status !== 404) {
       const body = await response.text().catch(() => "");

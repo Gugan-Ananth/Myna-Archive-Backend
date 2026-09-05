@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { BunnyService } from "../media/bunny.service";
+import { ImagePreviewService } from "../media/image-preview.service";
 import { OriginalCharacterEntity } from "./entities/original-character.entity";
 import { OriginalCharactersService } from "./original-characters.service";
 
@@ -28,6 +29,13 @@ describe("OriginalCharactersService", () => {
     destroy: jest.fn(() => Promise.resolve(undefined)),
   };
 
+  const previews = {
+    thumbnailUrlFor: jest.fn((_id: string, fallback: string) =>
+      Promise.resolve(fallback),
+    ),
+    destroyForOriginal: jest.fn(() => Promise.resolve(undefined)),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
     bunny.verifyAndDeriveUrls.mockResolvedValue({
@@ -52,6 +60,7 @@ describe("OriginalCharactersService", () => {
           useValue: repository,
         },
         { provide: BunnyService, useValue: bunny },
+        { provide: ImagePreviewService, useValue: previews },
       ],
     }).compile();
 

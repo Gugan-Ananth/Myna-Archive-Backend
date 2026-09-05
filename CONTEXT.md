@@ -20,7 +20,8 @@ Companion: **Myna-Archive-FrontEnd** (Next.js). This repo is the **API backend**
 | **Rating** | Decimal score **0.0–10.0** inclusive. Higher ranks first on the home grid. Required on create. | confusing with a category star |
 | **Category star** | A saved favorite marker on an Archive Item or Original Character. Each dashboard category allows at most **10** starred entries; the Images, Cute Things, Collections, Comics, Videos, Stories, and Original Characters categories are independent. | using rating as the star state |
 | **Top 10 board** | A dashboard view of the starred entries in every category. Each category contributes up to 10 entries, ordered by rating from highest to lowest. | treating Top 10 as one shared ten-item pool |
-| **Thumbnail** | Low-res still used for grid/list display (`thumbnailUrl`). For images: Bunny Optimizer query on CDN URL. For videos: Stream **poster** (`thumbnail.jpg`). | confusing with full media |
+| **Thumbnail** | Low-weight still used for grid/list display (`thumbnailUrl`). For images: a stored WebP preview object (`{uuid}-preview.webp`, under 1 MB) tracked in `image_previews`. For videos: Stream **poster** (`thumbnail.jpg`). | confusing with full media; Optimizer query-string thumbs (those are not a separate file) |
+| **Image preview** | The stored <1 MB WebP derived from an original image upload. Grid uses this; the detail view loads `mediaUrl` (the original). | "thumbnail query param", "optimizer transform" |
 | **Media URL** | Primary playback/view URL (`mediaUrl`): full-resolution image **or** progressive video stream URL (Bunny CDN / Stream). | `imageUrl` (superseded; do not use in new code) |
 | **Image** | Archive Item with `mediaType: "image"`. Detail view shows still. | confusing with thumbnail |
 | **Video** | Archive Item with `mediaType: "video"`. Detail view plays progressive video from `mediaUrl`. | treating video as a separate aggregate in v1 |
@@ -60,8 +61,8 @@ type ArchiveItem = {
   mediaType: MediaType;
   starred: boolean;     // category favorite; at most 10 per dashboard category
   section: "images" | "cute-things";
-  thumbnailUrl: string; // cover (first asset) — grid
-  mediaUrl: string;     // cover full image OR progressive video URL
+  thumbnailUrl: string; // cover preview still (stored WebP) or video poster
+  mediaUrl: string;     // cover original image OR progressive video URL
   width: number | null;
   height: number | null;
   blurHash: string | null;

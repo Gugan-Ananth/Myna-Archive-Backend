@@ -7,6 +7,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { MAX_STARS_PER_CATEGORY } from "../common/star-category";
 import { BunnyService } from "../media/bunny.service";
+import { ImagePreviewService } from "../media/image-preview.service";
 import { CreateOriginalCharacterDto } from "./dto/create-original-character.dto";
 import { ListOriginalCharactersQueryDto } from "./dto/list-original-characters-query.dto";
 import {
@@ -23,6 +24,7 @@ export class OriginalCharactersService {
     @InjectRepository(OriginalCharacterEntity)
     private readonly ocs: Repository<OriginalCharacterEntity>,
     private readonly bunny: BunnyService,
+    private readonly previews: ImagePreviewService,
   ) {}
 
   async create(
@@ -157,6 +159,7 @@ export class OriginalCharactersService {
       Object.assign(entity, media);
       if (previousId) {
         await this.bunny.destroy(previousId, "image");
+        await this.previews.destroyForOriginal(previousId);
       }
     } else if (dto.width !== undefined || dto.height !== undefined) {
       const hasWidth = dto.width !== undefined;
@@ -179,6 +182,7 @@ export class OriginalCharactersService {
     const entity = await this.findEntityOrFail(id);
     if (entity.publicId) {
       await this.bunny.destroy(entity.publicId, "image");
+      await this.previews.destroyForOriginal(entity.publicId);
     }
     await this.ocs.remove(entity);
   }
@@ -206,12 +210,16 @@ export class OriginalCharactersService {
       resourceType: "image",
       mediaType: "image",
     });
+    const thumbnailUrl = await this.previews.thumbnailUrlFor(
+      publicId,
+      urls.thumbnailUrl,
+    );
 
     return {
       publicId,
       resourceType: "image",
       mediaUrl: urls.mediaUrl,
-      thumbnailUrl: urls.thumbnailUrl,
+      thumbnailUrl,
       width: hasWidth ? Number(dims.width) : null,
       height: hasHeight ? Number(dims.height) : null,
       blurHash: blurHash.length > 0 ? blurHash : null,

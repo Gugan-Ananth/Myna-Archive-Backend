@@ -19,7 +19,9 @@ import {
   sanitizeStoryHtml,
 } from "../common/story-html";
 import type { MediaType } from "../common/media-type";
+import { mapLimit } from "../common/map-limit";
 import { BunnyService } from "../media/bunny.service";
+import { ImagePreviewService } from "../media/image-preview.service";
 import { TaxonomyService } from "../taxonomy/taxonomy.service";
 import {
   resolveMediaAssets,
@@ -51,6 +53,7 @@ export class ArchiveItemsService {
     @InjectRepository(ArchiveItemEntity)
     private readonly archiveItems: Repository<ArchiveItemEntity>,
     private readonly bunny: BunnyService,
+    private readonly previews: ImagePreviewService,
     private readonly taxonomy: TaxonomyService,
   ) {}
 
@@ -78,8 +81,8 @@ export class ArchiveItemsService {
 
     const verifyType: "image" | "video" =
       dto.mediaType === "video" ? "video" : "image";
-    const mediaAssets = await Promise.all(
-      assetInputs.map((asset) => this.verifyAsset(verifyType, asset)),
+    const mediaAssets = await mapLimit(assetInputs, 3, (asset) =>
+      this.verifyAsset(verifyType, asset),
     );
 
     let bodyHtml = "";
@@ -323,8 +326,8 @@ export class ArchiveItemsService {
     if (entity.mediaType === "story") {
       if (dto.assets !== undefined) {
         this.assertAssetRules("story", dto.assets);
-        const mediaAssets = await Promise.all(
-          dto.assets.map((asset) => this.verifyAsset("image", asset)),
+        const mediaAssets = await mapLimit(dto.assets, 3, (asset) =>
+          this.verifyAsset("image", asset),
         );
         const raw = sanitizeStoryHtml(dto.bodyHtml ?? entity.bodyHtml ?? "");
         const parts = partitionStoryAssets(raw, mediaAssets);
@@ -630,6 +633,10 @@ export class ArchiveItemsService {
       resourceType: asset.resourceType,
       mediaType,
     });
+    const thumbnailUrl =
+      mediaType === "image"
+        ? await this.previews.thumbnailUrlFor(asset.publicId, urls.thumbnailUrl)
+        : urls.thumbnailUrl;
 
     let width: number | null = hasWidth ? Number(asset.width) : null;
     let height: number | null = hasHeight ? Number(asset.height) : null;
@@ -649,7 +656,7 @@ export class ArchiveItemsService {
       publicId: asset.publicId,
       resourceType: asset.resourceType,
       mediaUrl: urls.mediaUrl,
-      thumbnailUrl: urls.thumbnailUrl,
+      thumbnailUrl,
       width,
       height,
       blurHash: blurHash.length > 0 ? blurHash : null,
@@ -743,7 +750,13 @@ export class ArchiveItemsService {
       const key = `${resourceType}:${publicId}`;
       if (!publicId || seen.has(key)) return;
       seen.add(key);
-      jobs.push(this.bunny.destroy(publicId, resourceType));
+      jobs.push(
+        this.bunny.destroy(publicId, resourceType).then(async () => {
+          if (resourceType === "image") {
+            await this.previews.destroyForOriginal(publicId);
+          }
+        }),
+      );
     };
 
     for (const asset of assets) {
@@ -773,7 +786,11 @@ export class ArchiveItemsService {
       const id = character.publicId;
       if (!id || keep.has(id) || seen.has(id)) continue;
       seen.add(id);
-      jobs.push(this.bunny.destroy(id, "image"));
+      jobs.push(
+        this.bunny.destroy(id, "image").then(() =>
+          this.previews.destroyForOriginal(id),
+        ),
+      );
     }
     await Promise.all(jobs);
   }
