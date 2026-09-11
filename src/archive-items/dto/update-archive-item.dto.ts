@@ -14,6 +14,7 @@ import {
   ValidateNested,
 } from "class-validator";
 import { MAX_STORY_BODY_CHARS } from "../../common/story-html";
+import { CaptionSpecDto } from "./caption-spec.dto";
 import { CreateMediaAssetDto } from "./media-asset.dto";
 import {
   MAX_STORY_CHARACTERS,
@@ -51,6 +52,12 @@ export class UpdateArchiveItemDto {
   @IsString()
   @MaxLength(600)
   summary?: string;
+
+  /** Replace caption layout options and source photo pointer. Omit to leave unchanged. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CaptionSpecDto)
+  captionSpec?: CaptionSpecDto;
 
   /**
    * Replace story media. Same convention as create: extra leading asset is

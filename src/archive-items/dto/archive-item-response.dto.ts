@@ -1,3 +1,4 @@
+import type { CaptionSpec } from "../../common/caption-spec";
 import type { MediaType } from "../../common/media-type";
 import type { ArchiveSection } from "../../common/archive-section";
 import type { ArchiveItemEntity } from "../entities/archive-item.entity";
@@ -11,10 +12,12 @@ export type ArchiveItemResponse = {
   description: string;
   /** Optional author name for written stories. */
   author: string;
-  /** Written story HTML; empty for image/video/comic. */
+  /** Written story HTML; empty for image/video/comic. Caption story is plain text. */
   bodyHtml: string;
   /** Optional short story blurb for homepage cards. */
   summary: string;
+  /** Layout options for a Bondage caption; null for other media types. */
+  captionSpec: CaptionSpec | null;
   tags: string[];
   rating: number;
   mediaType: MediaType;
@@ -33,7 +36,7 @@ export type ArchiveItemResponse = {
   height: number | null;
   blurHash: string | null;
   /**
-   * Ordered media assets. Length 1 for single image/video;
+   * Ordered media assets. Length 1 for single image/video/caption;
    * 2–25 for an image group; 1–80 for a comic. Cover is always index 0.
    */
   mediaAssets: MediaAssetResponse[];
@@ -109,6 +112,7 @@ export function toArchiveItemResponse(
     author: entity.author ?? "",
     bodyHtml: entity.bodyHtml ?? "",
     summary: entity.summary ?? "",
+    captionSpec: entity.captionSpec ?? null,
     tags: entity.tags,
     rating: entity.rating,
     mediaType: entity.mediaType,

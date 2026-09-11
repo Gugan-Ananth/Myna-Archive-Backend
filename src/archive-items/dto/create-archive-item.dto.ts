@@ -4,6 +4,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsIn,
+  IsDefined,
   IsInt,
   IsNumber,
   IsOptional,
@@ -22,6 +23,7 @@ import {
   type ArchiveSection,
 } from "../../common/archive-section";
 import { MAX_STORY_BODY_CHARS } from "../../common/story-html";
+import { CaptionSpecDto } from "./caption-spec.dto";
 import { CreateMediaAssetDto, MAX_COMIC_ASSETS } from "./media-asset.dto";
 import {
   MAX_STORY_CHARACTERS,
@@ -111,6 +113,16 @@ export class CreateArchiveItemDto {
   @IsString()
   @MaxLength(600)
   summary?: string;
+
+  /**
+   * Layout options and source photo pointer for a Bondage caption.
+   * Required when `mediaType` is `caption`. Story text is `bodyHtml`.
+   */
+  @ValidateIf((o: CreateArchiveItemDto) => o.mediaType === "caption")
+  @IsDefined()
+  @ValidateNested()
+  @Type(() => CaptionSpecDto)
+  captionSpec?: CaptionSpecDto;
 
   /** Existing series root to attach this chapter to. */
   @IsOptional()

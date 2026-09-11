@@ -9,6 +9,14 @@ import { Repository } from "typeorm";
 import { normalizeTags } from "../common/normalize-tags";
 import type { ArchiveSection } from "../common/archive-section";
 import {
+  CAPTION_ASSET_COUNT,
+  MAX_CAPTION_STORY_CHARS,
+  captionSourcePublicId,
+  normalizeCaptionStory,
+  parseCaptionSpec,
+  type CaptionSpec,
+} from "../common/caption-spec";
+import {
   MAX_STARS_PER_CATEGORY,
   type StarCategory,
 } from "../common/star-category";
@@ -79,13 +87,19 @@ export class ArchiveItemsService {
     }
     this.assertAssetRules(dto.mediaType, assetInputs, section);
 
+    let bodyHtml = "";
+    let captionSpec: CaptionSpec | null = null;
+    if (dto.mediaType === "caption") {
+      bodyHtml = this.requireCaptionStory(dto.bodyHtml);
+      captionSpec = await this.hydrateCaptionSpec(dto.captionSpec);
+    }
+
     const verifyType: "image" | "video" =
       dto.mediaType === "video" ? "video" : "image";
     const mediaAssets = await mapLimit(assetInputs, 3, (asset) =>
       this.verifyAsset(verifyType, asset),
     );
 
-    let bodyHtml = "";
     if (dto.mediaType === "story") {
       const raw = sanitizeStoryHtml(dto.bodyHtml ?? "");
       const parts = partitionStoryAssets(raw, mediaAssets);
@@ -114,6 +128,7 @@ export class ArchiveItemsService {
       author: dto.mediaType === "story" ? (dto.author?.trim() ?? "") : "",
       bodyHtml,
       summary: dto.summary?.trim() ?? "",
+      captionSpec,
       tags,
       rating: dto.rating,
       mediaType: dto.mediaType,
@@ -187,7 +202,9 @@ export class ArchiveItemsService {
       const searchClauses = [
         "LOWER(item.name) LIKE :q",
         "LOWER(item.description) LIKE :q",
-        ...(query.mediaType && query.mediaType !== "story"
+        ...(query.mediaType &&
+        query.mediaType !== "story" &&
+        query.mediaType !== "caption"
           ? []
           : ["LOWER(item.bodyHtml) LIKE :q"]),
         `EXISTS (
@@ -228,8 +245,15 @@ export class ArchiveItemsService {
       "item.mediaAssets",
       "item.characters",
     ];
-    if (!query.mediaType || query.mediaType === "story") {
+    if (
+      !query.mediaType ||
+      query.mediaType === "story" ||
+      query.mediaType === "caption"
+    ) {
       listColumns.push("item.bodyHtml");
+    }
+    if (!query.mediaType || query.mediaType === "caption") {
+      listColumns.push("item.captionSpec");
     }
 
     qb.select(listColumns).addSelect("COUNT(*) OVER()", "total_count");
@@ -322,6 +346,37 @@ export class ArchiveItemsService {
     }
     if (dto.summary !== undefined) {
       entity.summary = dto.summary.trim();
+    }
+    if (entity.mediaType === "caption") {
+      if (dto.bodyHtml !== undefined) {
+        entity.bodyHtml = this.requireCaptionStory(dto.bodyHtml);
+      }
+      const previousSource = captionSourcePublicId(entity.captionSpec);
+      if (dto.captionSpec !== undefined) {
+        entity.captionSpec = await this.hydrateCaptionSpec(dto.captionSpec);
+      }
+      if (dto.assets !== undefined) {
+        this.assertAssetRules("caption", dto.assets);
+        const mediaAssets = await mapLimit(dto.assets, 3, (asset) =>
+          this.verifyAsset("image", asset),
+        );
+        await this.destroyUnusedMediaAssets(entity, mediaAssets, [
+          captionSourcePublicId(entity.captionSpec),
+        ]);
+        const cover = mediaAssets[0];
+        entity.mediaAssets = mediaAssets;
+        entity.thumbnailUrl = cover?.thumbnailUrl ?? "";
+        entity.mediaUrl = cover?.mediaUrl ?? "";
+        entity.width = cover?.width ?? null;
+        entity.height = cover?.height ?? null;
+        entity.blurHash = cover?.blurHash ?? null;
+        entity.publicId = cover?.publicId ?? "";
+        entity.resourceType = cover?.resourceType ?? "image";
+      }
+      const nextSource = captionSourcePublicId(entity.captionSpec);
+      if (previousSource && previousSource !== nextSource) {
+        await this.destroyCaptionFile(previousSource);
+      }
     }
     if (entity.mediaType === "story") {
       if (dto.assets !== undefined) {
@@ -547,6 +602,22 @@ export class ArchiveItemsService {
       return;
     }
 
+    if (mediaType === "caption") {
+      if (assets.length !== CAPTION_ASSET_COUNT) {
+        throw new BadRequestException(
+          "Captions must have exactly one image asset (the generated still)",
+        );
+      }
+      for (const asset of assets) {
+        if (asset.resourceType !== "image") {
+          throw new BadRequestException(
+            "Caption assets must be resourceType image",
+          );
+        }
+      }
+      return;
+    }
+
     // image (single or group)
     if (assets.length < 1 || assets.length > MAX_IMAGE_ASSETS) {
       throw new BadRequestException(
@@ -584,9 +655,11 @@ export class ArchiveItemsService {
         starMediaType:
           category === "comics"
             ? "comic"
-            : category === "stories"
-              ? "story"
-              : category,
+            : category === "captions"
+              ? "caption"
+              : category === "stories"
+                ? "story"
+                : category,
       });
     }
 
@@ -606,8 +679,75 @@ export class ArchiveItemsService {
         : "images";
     }
     if (entity.mediaType === "comic") return "comics";
+    if (entity.mediaType === "caption") return "captions";
     if (entity.mediaType === "video") return "videos";
     return "stories";
+  }
+
+  private async hydrateCaptionSpec(raw: unknown): Promise<CaptionSpec> {
+    let spec: CaptionSpec;
+    try {
+      spec = parseCaptionSpec(raw);
+    } catch {
+      throw new BadRequestException("A valid captionSpec is required");
+    }
+    if (!spec.sourcePublicId) {
+      throw new BadRequestException("Caption source image is required");
+    }
+    const { urls } = await this.bunny.verifyAndDeriveUrls({
+      publicId: spec.sourcePublicId,
+      resourceType: "image",
+      mediaType: "image",
+    });
+    return {
+      ...spec,
+      sourceMediaUrl: urls.mediaUrl,
+    };
+  }
+
+  private async destroyCaptionFile(publicId: string): Promise<void> {
+    if (!publicId) return;
+    await this.bunny.destroy(publicId, "image");
+    await this.previews.destroyForOriginal(publicId);
+  }
+
+  private requireCaptionStory(raw: string | undefined): string {
+    const text = normalizeCaptionStory(raw);
+    if (!text) {
+      throw new BadRequestException("Caption story is required");
+    }
+    if (text.length > MAX_CAPTION_STORY_CHARS) {
+      throw new BadRequestException(
+        `Caption story may be at most ${MAX_CAPTION_STORY_CHARS} characters`,
+      );
+    }
+    return text;
+  }
+
+  private async destroyUnusedMediaAssets(
+    entity: ArchiveItemEntity,
+    next: MediaAssetResponse[],
+    extraKeep: string[] = [],
+  ): Promise<void> {
+    const keep = new Set(
+      [...next.map((asset) => asset.publicId), ...extraKeep].filter(Boolean),
+    );
+    const jobs: Promise<void>[] = [];
+    const seen = new Set<string>();
+    for (const asset of resolveMediaAssets(entity)) {
+      const id = asset.publicId;
+      if (!id || keep.has(id) || seen.has(id)) continue;
+      seen.add(id);
+      const resourceType = asset.resourceType === "video" ? "video" : "image";
+      jobs.push(
+        this.bunny.destroy(id, resourceType).then(async () => {
+          if (resourceType === "image") {
+            await this.previews.destroyForOriginal(id);
+          }
+        }),
+      );
+    }
+    await Promise.all(jobs);
   }
 
   private async verifyAsset(
@@ -764,6 +904,8 @@ export class ArchiveItemsService {
       const resourceType = asset.resourceType === "video" ? "video" : "image";
       queue(asset.publicId, resourceType);
     }
+    const sourceId = captionSourcePublicId(entity.captionSpec);
+    if (sourceId) queue(sourceId, "image");
     for (const character of entity.characters ?? []) {
       if (character.publicId) queue(character.publicId, "image");
     }

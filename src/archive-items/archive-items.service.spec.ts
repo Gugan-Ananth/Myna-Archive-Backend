@@ -21,7 +21,7 @@ describe("ArchiveItemsService", () => {
       } as ArchiveItemEntity),
     ),
     findOne: jest.fn(),
-    find: jest.fn(() => Promise.resolve([])),
+    find: jest.fn(() => Promise.resolve([] as ArchiveItemEntity[])),
     remove: jest.fn(() => Promise.resolve(undefined)),
     createQueryBuilder: jest.fn(() => {
       const qb: Record<string, jest.Mock> = {};
@@ -448,6 +448,137 @@ describe("ArchiveItemsService", () => {
       expect(result.height).toBe(1200);
     });
 
+    it("creates a caption with one generated still and source on the spec", async () => {
+      bunny.verifyAndDeriveUrls.mockImplementation(
+        (params: { publicId: string }) =>
+          Promise.resolve(mockImageVerify(params.publicId)),
+      );
+
+      const result = await service.create({
+        mediaType: "caption",
+        name: "Rope note",
+        tags: ["bondage:hogtie"],
+        rating: 8,
+        bodyHtml: "Stay still.",
+        captionSpec: {
+          template: "side-by-side",
+          width: 1200,
+          height: 800,
+          fontFamily: "Inter",
+          fontSize: 24,
+          padding: 40,
+          background: "#121018",
+          textColor: "#f3eefc",
+          sourcePublicId: "myna-archive/source.jpg",
+          sourceWidth: 900,
+          sourceHeight: 1200,
+        },
+        assets: [
+          {
+            publicId: "myna-archive/caption.png",
+            resourceType: "image",
+            width: 1200,
+            height: 800,
+          },
+        ],
+      });
+
+      expect(result.mediaType).toBe("caption");
+      expect(result.bodyHtml).toBe("Stay still.");
+      expect(result.captionSpec?.template).toBe("side-by-side");
+      expect(result.captionSpec?.sourcePublicId).toBe("myna-archive/source.jpg");
+      expect(result.captionSpec?.sourceMediaUrl).toBe(
+        "https://cdn.example.b-cdn.net/myna-archive/source.jpg",
+      );
+      expect(result.mediaAssets).toHaveLength(1);
+      expect(result.mediaAssets[0]?.publicId).toBe("myna-archive/caption.png");
+    });
+
+    it("rejects captions without a story", async () => {
+      await expect(
+        service.create({
+          mediaType: "caption",
+          name: "Empty",
+          tags: ["x"],
+          rating: 5,
+          bodyHtml: "   ",
+          captionSpec: {
+            template: "side-by-side",
+            width: 1200,
+            height: 800,
+            fontFamily: "Inter",
+            fontSize: 24,
+            padding: 40,
+            background: "#121018",
+            textColor: "#f3eefc",
+            sourcePublicId: "myna-archive/b.jpg",
+          },
+          assets: [
+            { publicId: "myna-archive/a.png", resourceType: "image" },
+          ],
+        }),
+      ).rejects.toThrow("Caption story is required");
+
+      expect(bunny.verifyAndDeriveUrls).not.toHaveBeenCalled();
+    });
+
+    it("rejects captions that are not exactly one image asset", async () => {
+      await expect(
+        service.create({
+          mediaType: "caption",
+          name: "Two assets",
+          tags: ["x"],
+          rating: 5,
+          bodyHtml: "A story",
+          captionSpec: {
+            template: "side-by-side",
+            width: 1200,
+            height: 800,
+            fontFamily: "Inter",
+            fontSize: 24,
+            padding: 40,
+            background: "#121018",
+            textColor: "#f3eefc",
+            sourcePublicId: "myna-archive/b.jpg",
+          },
+          assets: [
+            { publicId: "myna-archive/a.png", resourceType: "image" },
+            { publicId: "myna-archive/b.jpg", resourceType: "image" },
+          ],
+        }),
+      ).rejects.toThrow("exactly one image asset");
+
+      expect(bunny.verifyAndDeriveUrls).not.toHaveBeenCalled();
+    });
+
+    it("rejects captions without a source image on the spec", async () => {
+      await expect(
+        service.create({
+          mediaType: "caption",
+          name: "No source",
+          tags: ["x"],
+          rating: 5,
+          bodyHtml: "A story",
+          captionSpec: {
+            template: "side-by-side",
+            width: 1200,
+            height: 800,
+            fontFamily: "Inter",
+            fontSize: 24,
+            padding: 40,
+            background: "#121018",
+            textColor: "#f3eefc",
+            sourcePublicId: "",
+          },
+          assets: [
+            { publicId: "myna-archive/a.png", resourceType: "image" },
+          ],
+        }),
+      ).rejects.toThrow("Caption source image is required");
+
+      expect(bunny.verifyAndDeriveUrls).not.toHaveBeenCalled();
+    });
+
     it("rejects comics with more than 80 pages", async () => {
       const assets = Array.from({ length: 81 }, (_, i) => ({
         publicId: `myna-archive/${i}.jpg`,
@@ -643,6 +774,7 @@ describe("ArchiveItemsService", () => {
             description: "",
             author: "",
             summary: "",
+            captionSpec: null,
             tags: ["images"],
             rating: 8,
             mediaType: "image",
@@ -658,7 +790,7 @@ describe("ArchiveItemsService", () => {
             publicId: "myna-archive/single.jpg",
             resourceType: "image",
             mediaAssets: null,
-          } as ArchiveItemEntity,
+          } as unknown as ArchiveItemEntity,
         ],
         raw: [{ total_count: "41" }],
       });
@@ -699,6 +831,7 @@ describe("ArchiveItemsService", () => {
         author: "Old Author",
         bodyHtml: "<p>hello</p>",
         summary: "",
+        captionSpec: null,
         tags: ["x"],
         rating: 5,
         mediaType: "story",
@@ -711,7 +844,7 @@ describe("ArchiveItemsService", () => {
         blurHash: null,
         mediaAssets: [],
         characters: [],
-      } as ArchiveItemEntity;
+      } as unknown as ArchiveItemEntity;
       repository.findOne.mockResolvedValue(entity);
 
       const result = await service.update(entity.id, {
@@ -738,6 +871,7 @@ describe("ArchiveItemsService", () => {
         author: "",
         bodyHtml: "<p>hello</p>",
         summary: "",
+        captionSpec: null,
         tags: ["x"],
         rating: 5,
         mediaType: "story",
@@ -760,7 +894,7 @@ describe("ArchiveItemsService", () => {
             blurHash: null,
           },
         ],
-      } as ArchiveItemEntity;
+      } as unknown as ArchiveItemEntity;
       repository.findOne.mockResolvedValue(entity);
 
       const result = await service.update(entity.id, {
@@ -770,6 +904,195 @@ describe("ArchiveItemsService", () => {
       expect(result.characters[0]?.publicId).toBe("myna-archive/suki-new.jpg");
       expect(bunny.destroy).toHaveBeenCalledWith(
         "myna-archive/suki-old.jpg",
+        "image",
+      );
+    });
+
+    it("replaces a caption still and destroys the previous image", async () => {
+      bunny.verifyAndDeriveUrls.mockImplementation(
+        (params: { publicId: string }) =>
+          Promise.resolve(mockImageVerify(params.publicId)),
+      );
+      const entity = {
+        id: "11111111-1111-1111-1111-111111111111",
+        publicId: "myna-archive/caption-old.png",
+        resourceType: "image",
+        name: "Rope note",
+        description: "",
+        author: "",
+        bodyHtml: "Stay still.",
+        summary: "",
+        captionSpec: {
+          version: 1 as const,
+          template: "side-by-side" as const,
+          width: 1200,
+          height: 800,
+          fontFamily: "Inter" as const,
+          fontSize: 24,
+          padding: 40,
+          background: "#121018",
+          textColor: "#f3eefc",
+          panelColor: "rgba(18, 16, 24, 0.82)",
+          sourcePublicId: "myna-archive/source.jpg",
+          sourceMediaUrl: "https://cdn.example.b-cdn.net/myna-archive/source.jpg",
+          sourceWidth: 900,
+          sourceHeight: 1200,
+        },
+        tags: ["x"],
+        rating: 8,
+        mediaType: "caption",
+        starred: false,
+        section: "images",
+        seriesId: null,
+        chapterNumber: 1,
+        thumbnailUrl: "thumb-old",
+        mediaUrl: "media-old",
+        width: 1200,
+        height: 800,
+        blurHash: null,
+        mediaAssets: [
+          {
+            publicId: "myna-archive/caption-old.png",
+            resourceType: "image",
+            mediaUrl: "media-old",
+            thumbnailUrl: "thumb-old",
+            width: 1200,
+            height: 800,
+            blurHash: null,
+          },
+        ],
+        characters: [],
+      } as unknown as ArchiveItemEntity;
+      repository.findOne.mockResolvedValue(entity);
+
+      const result = await service.update(entity.id, {
+        bodyHtml: "Kneel.",
+        captionSpec: {
+          template: "side-by-side",
+          width: 1200,
+          height: 800,
+          fontFamily: "Inter",
+          fontSize: 24,
+          padding: 40,
+          background: "#121018",
+          textColor: "#f3eefc",
+          sourcePublicId: "myna-archive/source.jpg",
+        },
+        assets: [
+          {
+            publicId: "myna-archive/caption-new.png",
+            resourceType: "image",
+            width: 1200,
+            height: 800,
+          },
+        ],
+      });
+
+      expect(result.bodyHtml).toBe("Kneel.");
+      expect(result.mediaAssets).toHaveLength(1);
+      expect(result.mediaAssets[0]?.publicId).toBe(
+        "myna-archive/caption-new.png",
+      );
+      expect(result.captionSpec?.sourcePublicId).toBe("myna-archive/source.jpg");
+      expect(bunny.destroy).toHaveBeenCalledWith(
+        "myna-archive/caption-old.png",
+        "image",
+      );
+      expect(bunny.destroy).not.toHaveBeenCalledWith(
+        "myna-archive/source.jpg",
+        "image",
+      );
+    });
+
+    it("replaces a caption source photo and destroys the previous source", async () => {
+      bunny.verifyAndDeriveUrls.mockImplementation(
+        (params: { publicId: string }) =>
+          Promise.resolve(mockImageVerify(params.publicId)),
+      );
+      const entity = {
+        id: "11111111-1111-1111-1111-111111111111",
+        publicId: "myna-archive/caption-old.png",
+        resourceType: "image",
+        name: "Rope note",
+        description: "",
+        author: "",
+        bodyHtml: "Stay still.",
+        summary: "",
+        captionSpec: {
+          version: 1 as const,
+          template: "side-by-side" as const,
+          width: 1200,
+          height: 800,
+          fontFamily: "Inter" as const,
+          fontSize: 24,
+          padding: 40,
+          background: "#121018",
+          textColor: "#f3eefc",
+          panelColor: "rgba(18, 16, 24, 0.82)",
+          sourcePublicId: "myna-archive/source-old.jpg",
+          sourceMediaUrl:
+            "https://cdn.example.b-cdn.net/myna-archive/source-old.jpg",
+          sourceWidth: 900,
+          sourceHeight: 1200,
+        },
+        tags: ["x"],
+        rating: 8,
+        mediaType: "caption",
+        starred: false,
+        section: "images",
+        seriesId: null,
+        chapterNumber: 1,
+        thumbnailUrl: "thumb-old",
+        mediaUrl: "media-old",
+        width: 1200,
+        height: 800,
+        blurHash: null,
+        mediaAssets: [
+          {
+            publicId: "myna-archive/caption-old.png",
+            resourceType: "image",
+            mediaUrl: "media-old",
+            thumbnailUrl: "thumb-old",
+            width: 1200,
+            height: 800,
+            blurHash: null,
+          },
+        ],
+        characters: [],
+      } as unknown as ArchiveItemEntity;
+      repository.findOne.mockResolvedValue(entity);
+
+      const result = await service.update(entity.id, {
+        captionSpec: {
+          template: "side-by-side",
+          width: 1200,
+          height: 800,
+          fontFamily: "Inter",
+          fontSize: 24,
+          padding: 40,
+          background: "#121018",
+          textColor: "#f3eefc",
+          sourcePublicId: "myna-archive/source-new.jpg",
+        },
+        assets: [
+          {
+            publicId: "myna-archive/caption-new.png",
+            resourceType: "image",
+            width: 1200,
+            height: 800,
+          },
+        ],
+      });
+
+      expect(result.captionSpec?.sourcePublicId).toBe(
+        "myna-archive/source-new.jpg",
+      );
+      expect(bunny.destroy).toHaveBeenCalledWith(
+        "myna-archive/caption-old.png",
+        "image",
+      );
+      expect(bunny.destroy).toHaveBeenCalledWith(
+        "myna-archive/source-old.jpg",
         "image",
       );
     });
@@ -784,6 +1107,7 @@ describe("ArchiveItemsService", () => {
         author: "",
         bodyHtml: "",
         summary: "",
+        captionSpec: null,
         tags: ["x"],
         rating: 5,
         mediaType: "image",
@@ -798,7 +1122,7 @@ describe("ArchiveItemsService", () => {
         blurHash: null,
         mediaAssets: [],
         characters: [],
-      } as ArchiveItemEntity;
+      } as unknown as ArchiveItemEntity;
       repository.findOne.mockResolvedValue(entity);
 
       const result = await service.update(entity.id, { starred: true });
@@ -819,6 +1143,7 @@ describe("ArchiveItemsService", () => {
         author: "",
         bodyHtml: "",
         summary: "",
+        captionSpec: null,
         tags: ["x"],
         rating: 5,
         mediaType: "image",
@@ -833,7 +1158,7 @@ describe("ArchiveItemsService", () => {
         blurHash: null,
         mediaAssets: [],
         characters: [],
-      } as ArchiveItemEntity;
+      } as unknown as ArchiveItemEntity;
       repository.findOne.mockResolvedValue(entity);
 
       const qb: Record<string, jest.Mock> = {};
@@ -893,6 +1218,50 @@ describe("ArchiveItemsService", () => {
       expect(bunny.destroy).toHaveBeenCalledTimes(2);
       expect(bunny.destroy).toHaveBeenCalledWith("myna-archive/a.jpg", "image");
       expect(bunny.destroy).toHaveBeenCalledWith("myna-archive/b.jpg", "image");
+      expect(repository.remove).toHaveBeenCalled();
+    });
+
+    it("destroys the generated still and source photo with a caption", async () => {
+      repository.findOne.mockResolvedValue({
+        id: "11111111-1111-1111-1111-111111111111",
+        publicId: "myna-archive/caption.png",
+        resourceType: "image",
+        name: "caption",
+        description: "",
+        tags: ["a"],
+        rating: 1,
+        mediaType: "caption",
+        thumbnailUrl: "t",
+        mediaUrl: "m",
+        width: null,
+        height: null,
+        blurHash: null,
+        captionSpec: {
+          sourcePublicId: "myna-archive/source.jpg",
+        },
+        mediaAssets: [
+          {
+            publicId: "myna-archive/caption.png",
+            resourceType: "image",
+            mediaUrl: "m1",
+            thumbnailUrl: "t1",
+            width: null,
+            height: null,
+            blurHash: null,
+          },
+        ],
+      });
+
+      await service.remove("11111111-1111-1111-1111-111111111111");
+
+      expect(bunny.destroy).toHaveBeenCalledWith(
+        "myna-archive/caption.png",
+        "image",
+      );
+      expect(bunny.destroy).toHaveBeenCalledWith(
+        "myna-archive/source.jpg",
+        "image",
+      );
       expect(repository.remove).toHaveBeenCalled();
     });
 
@@ -1017,7 +1386,9 @@ describe("ArchiveItemsService", () => {
         mediaAssets: [],
       };
       repository.findOne.mockResolvedValue(root);
-      repository.find.mockResolvedValue([chapter3, chapter2]);
+      repository.find.mockResolvedValue(
+        [chapter3, chapter2] as unknown as ArchiveItemEntity[],
+      );
 
       await service.remove(root.id);
 

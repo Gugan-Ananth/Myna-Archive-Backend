@@ -13,12 +13,12 @@ Companion: **Myna-Archive-FrontEnd** (Next.js). This repo is the **API backend**
 | **Collection** | The user's full set of archive items (implicit for a single-user product). | "library", "gallery" as domain types |
 | **Owner account** | The single hardcoded login (email + password in env). No signup, no password change, no extra users. | "user" as a table / multi-tenant identity |
 | **Access token** | Never-expiring HMAC bearer token issued at login. Stored per device. Valid until `AUTH_TOKEN_SECRET` rotates. | "session cookie" as the API credential (cookie is a frontend concern) |
-| **Media type** | Discriminator on an Archive Item: `image`, `video`, `story`, or `comic`. Determines upload validation, Bunny product path (Storage vs Stream), and detail UI (still viewer vs player vs reader). | "kind" / "format" as the public field name |
+| **Media type** | Discriminator on an Archive Item: `image`, `video`, `story`, `comic`, or `caption`. Determines upload validation, Bunny product path (Storage vs Stream), and detail UI (still viewer vs player vs reader vs composed still). | "kind" / "format" as the public field name |
 | **Tag** | Encoded `category:tag` string on an item (e.g. `bondage:hogtie`), or legacy freeform without `:`. Normalized on write: trim, strip leading `#`, lowercase, de-dupe. At least one tag required on create. | bare freeform for new content |
 | **Category** | Named group in the taxonomy vocabulary (e.g. Bondage, Artists). Stored in `tag_categories`; seeded built-ins + user-created. | "tag" as synonym for category |
 | **Taxonomy tag** | Selectable value under a category (e.g. hogtie under Bondage). Stored in `taxonomy_tags`. | freeform item tag without category |
 | **Rating** | Decimal score **0.0–10.0** inclusive. Higher ranks first on the home grid. Required on create. | confusing with a category star |
-| **Category star** | A saved favorite marker on an Archive Item or Original Character. Each dashboard category allows at most **10** starred entries; the Images, Cute Things, Collections, Comics, Videos, Stories, and Original Characters categories are independent. | using rating as the star state |
+| **Category star** | A saved favorite marker on an Archive Item or Original Character. Each dashboard category allows at most **10** starred entries; the Images, Cute Things, Collections, Comics, Captions, Videos, Stories, and Original Characters categories are independent. | using rating as the star state |
 | **Top 10 board** | A dashboard view of the starred entries in every category. Each category contributes up to 10 entries, ordered by rating from highest to lowest. | treating Top 10 as one shared ten-item pool |
 | **Thumbnail** | Low-weight still used for grid/list display (`thumbnailUrl`). For images: a stored WebP preview object (`{uuid}-preview.webp`, under 1 MB) tracked in `image_previews`. For videos: Stream **poster** (`thumbnail.jpg`). | confusing with full media; Optimizer query-string thumbs (those are not a separate file) |
 | **Image preview** | The stored <1 MB WebP derived from an original image upload. Grid uses this; the detail view loads `mediaUrl` (the original). | "thumbnail query param", "optimizer transform" |
@@ -32,6 +32,7 @@ Companion: **Myna-Archive-FrontEnd** (Next.js). This repo is the **API backend**
 | **Media asset** | One uploaded binary + derived URLs within an Archive Item (cover or carousel slide). | "attachment", "file" as API type names |
 | **Image group** | An Archive Item with `mediaType: "image"` and **2–25** media assets. Homepage shows the **cover** (first asset) only; detail scrolls the rest. | "album", "gallery" as separate aggregates |
 | **Comic** | An Archive Item with `mediaType: "comic"` and **1–80** ordered page images. Cover is the first page. Own collection section and vertical reader — not an oversized image group. | "album", "image group", "story" as synonyms |
+| **Bondage caption** | An Archive Item with `mediaType: "caption"`: a source image plus a written story, composed into one still with a layout template. Cover (`mediaAssets[0]`) is the generated still. Story text is `bodyHtml`; template/font/colors and the source photo (`sourcePublicId`) live in `captionSpec`. | meme, overlay (unless naming the overlay template), treating the PNG as the only source of truth |
 | **Story character** | A named speaker in a written story chapter, with an optional portrait shown beside dialogue in the reader. Stored on the Archive Item (`characters`), not as a separate aggregate and not mixed into media assets. | "OC" as a synonym (Original Characters are a different collection), "cast", "actor" |
 
 ## Core model (API contract)
@@ -39,7 +40,7 @@ Companion: **Myna-Archive-FrontEnd** (Next.js). This repo is the **API backend**
 Public DTOs (frontend must migrate from the earlier image-only shape — see ADR 0006; display fields ADR 0008; image groups ADR 0009):
 
 ```ts
-type MediaType = "image" | "video" | "story" | "comic";
+type MediaType = "image" | "video" | "story" | "comic" | "caption";
 
 type MediaAsset = {
   publicId: string;
@@ -66,7 +67,8 @@ type ArchiveItem = {
   width: number | null;
   height: number | null;
   blurHash: string | null;
-  mediaAssets: MediaAsset[]; // 1 for single/video; 2–25 for image group; 1–80 for comic
+  mediaAssets: MediaAsset[]; // 1 for single/video/caption; 2–25 for image group; 1–80 for comic
+  captionSpec: CaptionSpec | null; // layout + source photo pointer for captions
   characters: StoryCharacter[]; // story speakers; empty for other media types
 };
 
@@ -107,11 +109,13 @@ Declares `mediaType`, `mimeType`, `byteSize` (must be ≤ limits). Returns Bunny
 
 | Field | Required | Notes |
 |-------|----------|--------|
-| `assets` | preferred | Array of `{ publicId, resourceType, width?, height?, blurHash? }`. Image: 1–10; comic: 1–80; video: exactly 1 |
+| `assets` | preferred | Array of `{ publicId, resourceType, width?, height?, blurHash? }`. Image: 1–10; comic: 1–80; video: exactly 1; caption: exactly 1 (generated still) |
 | `section` | no | `images` by default; `cute-things` accepts exactly one image |
 | `publicId` | legacy | Required if `assets` omitted — Storage path or Stream GUID |
 | `resourceType` | legacy | Required if `assets` omitted — `image` \| `video` |
-| `mediaType` | yes | `image` \| `video` \| `story` \| `comic`; must match assets |
+| `mediaType` | yes | `image` \| `video` \| `story` \| `comic` \| `caption`; must match assets |
+| `captionSpec` | captions | Template, canvas, font, colors, and `sourcePublicId` of the original photo. Story text is `bodyHtml`. Cover `assets` is the generated still only. |
+| `bodyHtml` | stories / captions | Story HTML, or plain caption story text |
 | `name` | yes | Non-empty string |
 | `tags` | yes | ≥1 tag after normalization |
 | `rating` | yes | 0.0–10.0 |
@@ -126,7 +130,7 @@ Nest verifies **each** asset, derives URLs, stores ordered `mediaAssets`, and de
 
 ### Update (JSON)
 
-Mutable: `name`, `description`, `author` (stories), `summary` (stories), `bodyHtml` (stories), `assets` (stories), `characters` (stories), `tags`, `rating`, `starred`.
+Mutable: `name`, `description`, `author` (stories), `summary` (stories), `bodyHtml` (stories/captions), `captionSpec` (captions), `assets` (stories/captions), `characters` (stories), `tags`, `rating`, `starred`.
 Setting `starred` to `true` fails once the item's dashboard category already has
 10 starred entries. Unstarring is always allowed. Use `starred=true|false` on
 list endpoints to filter saved favorites.
@@ -137,7 +141,7 @@ list endpoints to filter saved favorites.
 - Sort: **rating DESC**, then **name ASC**
 - Multi-tag filter: **AND**
 - Search (`q`): name, description, tags (case-insensitive substring)
-- Optional `mediaType=image|video|story|comic`
+- Optional `mediaType=image|video|story|comic|caption`
 - Pagination: `page` (default 1), `pageSize` (default 20, max 100)
 
 ### Tags vocabulary
@@ -158,6 +162,7 @@ list endpoints to filter saved favorites.
 | `image` (1 asset) | BlurHash → cover `thumbnailUrl` | still from cover `mediaUrl` |
 | `image` (2–25 group) | Cover only (+ optional “N photos” badge) | carousel over `mediaAssets` |
 | `comic` (1–80 pages) | Cover only (+ page-count badge) | vertical page reader over `mediaAssets` |
+| `caption` (2 images) | Generated still (`mediaAssets[0]`) | still viewer; Edit caption regenerates from source + spec |
 | `video` | BlurHash → `thumbnailUrl` (poster) | progressive `<video src={mediaUrl}>` |
 
 Use cover `width`/`height` when present for masonry cell aspect ratio without measuring the media.
@@ -188,6 +193,7 @@ Use cover `width`/`height` when present for masonry cell aspect ratio without me
 | Display metadata + tags endpoint | [0008](docs/adr/0008-display-metadata-and-tags-endpoint.md) |
 | Image groups (multi-image items) | [0009](docs/adr/0009-image-groups.md) |
 | Comics (page sequences) | [0012](docs/adr/0012-comics.md) |
+| Bondage captions | [0014](docs/adr/0014-captions.md) |
 | Archive item list performance | [0013](docs/adr/0013-archive-item-list-performance.md) |
 
 ## Open decisions

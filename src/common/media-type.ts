@@ -1,4 +1,10 @@
-export const MEDIA_TYPES = ["image", "video", "story", "comic"] as const;
+export const MEDIA_TYPES = [
+  "image",
+  "video",
+  "story",
+  "comic",
+  "caption",
+] as const;
 
 export type MediaType = (typeof MEDIA_TYPES)[number];
 

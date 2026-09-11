@@ -4,6 +4,7 @@ export const STAR_CATEGORIES = [
   "cute-things",
   "collections",
   "comics",
+  "captions",
   "videos",
   "stories",
   "oc",

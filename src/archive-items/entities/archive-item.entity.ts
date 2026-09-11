@@ -6,6 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
+import type { CaptionSpec } from "../../common/caption-spec";
 import type { MediaType } from "../../common/media-type";
 import type { ArchiveSection } from "../../common/archive-section";
 import type { MediaAssetResponse } from "../dto/media-asset.dto";
@@ -51,6 +52,13 @@ export class ArchiveItemEntity {
   /** Optional short blurb for story homepage cards. */
   @Column({ type: "varchar", length: 600, default: "" })
   summary!: string;
+
+  /**
+   * Layout options and source photo pointer for a Bondage caption.
+   * Null for other media types. Story text lives in `bodyHtml`.
+   */
+  @Column({ type: "jsonb", nullable: true })
+  captionSpec!: CaptionSpec | null;
 
   @Column({ type: "text", array: true, default: "{}" })
   tags!: string[];
