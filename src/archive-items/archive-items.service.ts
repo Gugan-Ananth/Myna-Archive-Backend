@@ -465,45 +465,63 @@ export class ArchiveItemsService {
   }
 
   /**
-   * Delete only this chapter. If it is the series root and later chapters
-   * remain, promote the lowest remaining chapter to root (same story name,
-   * same chapter numbers) so chapter 1 can be written again.
+   * Delete only this chapter. Remaining chapters are reassigned consecutive
+   * numbers in order (delete 10 and 11 becomes 10). If the series root is
+   * deleted and later chapters remain, promote the lowest remaining chapter
+   * to root (same story name) as the new chapter 1.
    */
   private async removeStoryChapter(
     entity: ArchiveItemEntity,
   ): Promise<void> {
     const isRoot = !entity.seriesId;
-    const children = isRoot
-      ? await this.archiveItems.find({
-          where: { seriesId: entity.id, mediaType: "story" },
-        })
-      : [];
+    const rootId = entity.seriesId ?? entity.id;
+    const series = await this.archiveItems.find({
+      where: [
+        { id: rootId, mediaType: "story" },
+        { seriesId: rootId, mediaType: "story" },
+      ],
+    });
+    const remaining = series
+      .filter((chapter) => chapter.id !== entity.id)
+      .sort(
+        (a, b) => (a.chapterNumber ?? 1) - (b.chapterNumber ?? 1),
+      );
 
     const assets = resolveMediaAssets(entity);
     await this.destroyItemAssets(entity);
     await this.archiveItems.remove(entity);
 
-    if (isRoot && children.length > 0) {
-      const remaining = [...children].sort(
-        (a, b) => (a.chapterNumber ?? 1) - (b.chapterNumber ?? 1),
-      );
-      const promoted = remaining[0];
-      if (!promoted) {
-        return;
+    const promoted = isRoot ? remaining[0] : undefined;
+    for (let i = 0; i < remaining.length; i += 1) {
+      const chapter = remaining[i];
+      if (!chapter) continue;
+      const nextNumber = i + 1;
+      let dirty = false;
+
+      if (promoted) {
+        if (chapter.id === promoted.id) {
+          chapter.seriesId = null;
+          chapter.name = entity.name;
+          if (!chapter.summary?.trim() && entity.summary) {
+            chapter.summary = entity.summary;
+          }
+          if (!chapter.author?.trim() && entity.author) {
+            chapter.author = entity.author;
+          }
+          dirty = true;
+        } else {
+          chapter.seriesId = promoted.id;
+          dirty = true;
+        }
       }
-      const rest = remaining.slice(1);
-      promoted.seriesId = null;
-      promoted.name = entity.name;
-      if (!promoted.summary?.trim() && entity.summary) {
-        promoted.summary = entity.summary;
+
+      if ((chapter.chapterNumber ?? 1) !== nextNumber) {
+        chapter.chapterNumber = nextNumber;
+        dirty = true;
       }
-      if (!promoted.author?.trim() && entity.author) {
-        promoted.author = entity.author;
-      }
-      await this.archiveItems.save(promoted);
-      for (const child of rest) {
-        child.seriesId = promoted.id;
-        await this.archiveItems.save(child);
+
+      if (dirty) {
+        await this.archiveItems.save(chapter);
       }
     }
 

@@ -1331,7 +1331,22 @@ describe("ArchiveItemsService", () => {
     });
 
     it("deletes a later story chapter without removing the series", async () => {
-      repository.findOne.mockResolvedValue({
+      const root = {
+        id: "11111111-1111-1111-1111-111111111111",
+        publicId: "",
+        resourceType: "image",
+        name: "test",
+        description: "",
+        tags: ["x"],
+        rating: 5,
+        mediaType: "story",
+        seriesId: null,
+        chapterNumber: 1,
+        thumbnailUrl: "",
+        mediaUrl: "",
+        mediaAssets: [],
+      };
+      const chapter2 = {
         id: "22222222-2222-2222-2222-222222222222",
         publicId: "",
         resourceType: "image",
@@ -1340,17 +1355,89 @@ describe("ArchiveItemsService", () => {
         tags: ["x"],
         rating: 5,
         mediaType: "story",
-        seriesId: "11111111-1111-1111-1111-111111111111",
+        seriesId: root.id,
         chapterNumber: 2,
         thumbnailUrl: "",
         mediaUrl: "",
         mediaAssets: [],
-      });
+      };
+      repository.findOne.mockResolvedValue(chapter2);
+      repository.find.mockResolvedValue(
+        [root, chapter2] as unknown as ArchiveItemEntity[],
+      );
 
-      await service.remove("22222222-2222-2222-2222-222222222222");
+      await service.remove(chapter2.id);
 
       expect(repository.remove).toHaveBeenCalledTimes(1);
       expect(repository.save).not.toHaveBeenCalled();
+    });
+
+    it("shifts later chapters down when a middle chapter is deleted", async () => {
+      const root = {
+        id: "11111111-1111-1111-1111-111111111111",
+        publicId: "",
+        resourceType: "image",
+        name: "Night letter",
+        description: "",
+        tags: ["x"],
+        rating: 8,
+        mediaType: "story",
+        seriesId: null,
+        chapterNumber: 1,
+        thumbnailUrl: "",
+        mediaUrl: "",
+        mediaAssets: [],
+      };
+      const chapter2 = {
+        id: "22222222-2222-2222-2222-222222222222",
+        name: "Night letter",
+        mediaType: "story",
+        seriesId: root.id,
+        chapterNumber: 2,
+        mediaAssets: [],
+      };
+      const chapter3 = {
+        id: "33333333-3333-3333-3333-333333333333",
+        name: "Night letter",
+        mediaType: "story",
+        seriesId: root.id,
+        chapterNumber: 3,
+        mediaAssets: [],
+      };
+      const chapter4 = {
+        id: "44444444-4444-4444-4444-444444444444",
+        name: "Night letter",
+        mediaType: "story",
+        seriesId: root.id,
+        chapterNumber: 4,
+        mediaAssets: [],
+      };
+      repository.findOne.mockResolvedValue(chapter2);
+      repository.find.mockResolvedValue(
+        [root, chapter2, chapter3, chapter4] as unknown as ArchiveItemEntity[],
+      );
+
+      await service.remove(chapter2.id);
+
+      expect(repository.remove).toHaveBeenCalledTimes(1);
+      expect(repository.save).toHaveBeenCalledTimes(2);
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: chapter3.id,
+          seriesId: root.id,
+          chapterNumber: 2,
+        }),
+      );
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: chapter4.id,
+          seriesId: root.id,
+          chapterNumber: 3,
+        }),
+      );
+      expect(repository.save).not.toHaveBeenCalledWith(
+        expect.objectContaining({ id: root.id }),
+      );
     });
 
     it("promotes the next chapter to root when chapter 1 is deleted", async () => {
@@ -1398,13 +1485,14 @@ describe("ArchiveItemsService", () => {
           id: chapter2.id,
           seriesId: null,
           name: "Night letter",
-          chapterNumber: 2,
+          chapterNumber: 1,
         }),
       );
       expect(repository.save).toHaveBeenCalledWith(
         expect.objectContaining({
           id: chapter3.id,
           seriesId: chapter2.id,
+          chapterNumber: 2,
         }),
       );
     });
