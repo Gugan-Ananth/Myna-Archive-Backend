@@ -147,11 +147,10 @@ export class ArchiveItemsService {
     });
 
     const saved = await this.archiveItems.save(entity);
-    const chapterCount =
-      dto.mediaType === "story"
-        ? await this.chapterCountForRoot(saved.seriesId ?? saved.id)
-        : 1;
-    return toArchiveItemResponse(saved, { chapterCount });
+    return toArchiveItemResponse(
+      saved,
+      await this.storySeriesExtras(saved),
+    );
   }
 
   async findAll(
@@ -269,16 +268,19 @@ export class ArchiveItemsService {
       ? Number(firstRow.total_count)
       : await qb.clone().skip(undefined).take(undefined).getCount();
 
-    const counts = await this.chapterCountsForRoots(
-      entities
-        .filter((item) => item.mediaType === "story" && !item.seriesId)
-        .map((item) => item.id),
+    const storyRoots = entities.filter(
+      (item) => item.mediaType === "story" && !item.seriesId,
     );
+    const counts = await this.chapterCountsForRoots(
+      storyRoots.map((item) => item.id),
+    );
+    const seriesRatings = await this.seriesRatingsForRoots(storyRoots);
 
     return {
       data: entities.map((item) =>
         toArchiveItemResponse(item, {
           chapterCount: counts.get(item.id) ?? 1,
+          seriesRating: seriesRatings.get(item.id) ?? item.rating,
         }),
       ),
       meta: {
@@ -292,11 +294,7 @@ export class ArchiveItemsService {
 
   async findOne(id: string): Promise<ArchiveItemResponse> {
     const entity = await this.findEntityOrFail(id);
-    const rootId =
-      entity.mediaType === "story" ? (entity.seriesId ?? entity.id) : entity.id;
-    const chapterCount =
-      entity.mediaType === "story" ? await this.chapterCountForRoot(rootId) : 1;
-    return toArchiveItemResponse(entity, { chapterCount });
+    return toArchiveItemResponse(entity, await this.storySeriesExtras(entity));
   }
 
   async listChapters(
@@ -315,9 +313,10 @@ export class ArchiveItemsService {
       order: { chapterNumber: "ASC" },
     });
     const chapterCount = chapters.length;
+    const seriesRating = this.meanRating(chapters);
     return {
       data: chapters.map((item) =>
-        toArchiveItemResponse(item, { chapterCount }),
+        toArchiveItemResponse(item, { chapterCount, seriesRating }),
       ),
     };
   }
@@ -441,11 +440,10 @@ export class ArchiveItemsService {
     }
 
     const saved = await this.archiveItems.save(entity);
-    const rootId =
-      saved.mediaType === "story" ? (saved.seriesId ?? saved.id) : saved.id;
-    const chapterCount =
-      saved.mediaType === "story" ? await this.chapterCountForRoot(rootId) : 1;
-    return toArchiveItemResponse(saved, { chapterCount });
+    return toArchiveItemResponse(
+      saved,
+      await this.storySeriesExtras(saved),
+    );
   }
 
   async remove(id: string): Promise<void> {
@@ -873,9 +871,35 @@ export class ArchiveItemsService {
     }
   }
 
-  private async chapterCountForRoot(rootId: string): Promise<number> {
-    const counts = await this.chapterCountsForRoots([rootId]);
-    return counts.get(rootId) ?? 1;
+  private async storySeriesExtras(entity: ArchiveItemEntity): Promise<{
+    chapterCount: number;
+    seriesRating: number;
+  }> {
+    if (entity.mediaType !== "story") {
+      return { chapterCount: 1, seriesRating: entity.rating };
+    }
+    const rootId = entity.seriesId ?? entity.id;
+    const chapters = await this.archiveItems.find({
+      where: [
+        { id: rootId, mediaType: "story" },
+        { seriesId: rootId, mediaType: "story" },
+      ],
+      select: ["id", "rating"],
+    });
+    return {
+      chapterCount: Math.max(chapters.length, 1),
+      seriesRating: this.meanRating(
+        chapters.length > 0 ? chapters : [entity],
+      ),
+    };
+  }
+
+  private meanRating(items: Array<{ rating: number }>): number {
+    const values = items
+      .map((item) => item.rating)
+      .filter((rating) => Number.isFinite(rating));
+    if (values.length === 0) return 0;
+    return values.reduce((sum, rating) => sum + rating, 0) / values.length;
   }
 
   private async chapterCountsForRoots(
@@ -895,6 +919,46 @@ export class ArchiveItemsService {
 
     for (const row of rows) {
       map.set(row.sid, 1 + Number(row.n));
+    }
+    return map;
+  }
+
+  /** Mean of the root rating plus every continuation, batched for the list. */
+  private async seriesRatingsForRoots(
+    roots: Array<{ id: string; rating: number }>,
+  ): Promise<Map<string, number>> {
+    const map = new Map<string, number>();
+    const totals = new Map<string, { sum: number; n: number }>();
+    for (const root of roots) {
+      totals.set(root.id, { sum: root.rating, n: 1 });
+      map.set(root.id, root.rating);
+    }
+    if (roots.length === 0) return map;
+
+    const rows: Array<{ sid: string; sum: string; n: string }> =
+      await this.archiveItems
+        .createQueryBuilder("ch")
+        .select("ch.seriesId", "sid")
+        .addSelect("SUM(ch.rating)", "sum")
+        .addSelect("COUNT(*)", "n")
+        .where("ch.seriesId IN (:...ids)", {
+          ids: roots.map((root) => root.id),
+        })
+        .groupBy("ch.seriesId")
+        .getRawMany();
+
+    for (const row of rows) {
+      const current = totals.get(row.sid);
+      if (!current) continue;
+      const extraSum = Number(row.sum);
+      const extraCount = Number(row.n);
+      if (!Number.isFinite(extraSum) || !Number.isFinite(extraCount)) continue;
+      current.sum += extraSum;
+      current.n += extraCount;
+    }
+
+    for (const [id, { sum, n }] of totals) {
+      if (n > 0) map.set(id, sum / n);
     }
     return map;
   }

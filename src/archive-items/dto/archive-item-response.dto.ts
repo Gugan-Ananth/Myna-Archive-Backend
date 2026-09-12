@@ -29,6 +29,11 @@ export type ArchiveItemResponse = {
   chapterNumber: number;
   /** Chapters in the series (root + continuations). 1 for a lone story. */
   chapterCount: number;
+  /**
+   * Mean of every chapter rating in the series. Same as `rating` for a
+   * single-chapter story and for non-stories.
+   */
+  seriesRating: number;
   /** Cover (first asset) — homepage grid. */
   thumbnailUrl: string;
   mediaUrl: string;
@@ -100,7 +105,7 @@ export function resolveStoryCharacters(
 
 export function toArchiveItemResponse(
   entity: ArchiveItemEntity,
-  extras?: { chapterCount?: number },
+  extras?: { chapterCount?: number; seriesRating?: number },
 ): ArchiveItemResponse {
   const mediaAssets = resolveMediaAssets(entity);
   const cover = mediaAssets[0];
@@ -121,6 +126,7 @@ export function toArchiveItemResponse(
     seriesId: entity.seriesId ?? null,
     chapterNumber: entity.chapterNumber ?? 1,
     chapterCount: extras?.chapterCount ?? 1,
+    seriesRating: extras?.seriesRating ?? entity.rating,
     thumbnailUrl: cover?.thumbnailUrl ?? entity.thumbnailUrl,
     mediaUrl: cover?.mediaUrl ?? entity.mediaUrl,
     width: cover?.width ?? entity.width ?? null,
